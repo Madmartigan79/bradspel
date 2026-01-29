@@ -5,22 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Zebbas Spelhylla</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        .game-card { animation: fadeIn 0.4s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-    </style>
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-900 font-sans">
-    <div class="max-w-6xl mx-auto px-4 py-8">
-        <header class="text-center mb-10">
-            <h1 class="text-5xl font-black mb-2 text-indigo-900 tracking-tight italic uppercase">Zebbas Games</h1>
-            <p class="text-slate-400 font-bold uppercase tracking-widest text-xs">Board Game Discovery</p>
+    <div class="max-w-4xl mx-auto px-4 py-8">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-black text-indigo-900 italic uppercase italic tracking-tighter">Zebbas Games</h1>
         </header>
 
-        <div class="bg-white p-6 rounded-3xl shadow-xl border border-slate-100 mb-8 max-w-md mx-auto">
-            <label class="block text-[10px] font-bold uppercase text-slate-400 mb-2 text-center tracking-widest">Hur många spelare?</label>
+        <div class="bg-white p-6 rounded-3xl shadow-xl mb-8 max-w-md mx-auto border border-slate-100">
+            <label class="block text-[10px] font-bold uppercase text-slate-400 mb-2 text-center">Spelarantal</label>
             <div class="flex flex-col gap-4">
-                <select id="playerCount" class="w-full border-2 border-slate-100 rounded-2xl p-4 bg-slate-50 font-bold focus:border-indigo-500 outline-none text-xl appearance-none text-center">
+                <select id="playerCount" class="w-full border-2 border-slate-100 rounded-xl p-3 font-bold text-center text-xl outline-none focus:border-indigo-500">
                     <option value="1">1 Person</option>
                     <option value="2" selected>2 Personer</option>
                     <option value="3">3 Personer</option>
@@ -28,126 +23,99 @@
                     <option value="5">5 Personer</option>
                     <option value="6">6+ Personer</option>
                 </select>
-                <button id="fetchBtn" class="w-full bg-indigo-600 text-white py-4 rounded-2xl hover:bg-indigo-700 font-black shadow-lg shadow-indigo-200 transition-all active:scale-95 uppercase italic tracking-wider">
-                    Hitta Spel
-                </button>
+                <button id="fetchBtn" class="w-full bg-indigo-600 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-indigo-700 transition-all">Hämta Spel</button>
             </div>
         </div>
 
-        <div id="status" class="text-center mb-6 font-bold text-indigo-500 min-h-[1.5rem]">Redo!</div>
-        
-        <div id="gameGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-12"></div>
-
-        <div id="debug" class="hidden max-w-2xl mx-auto p-4 bg-slate-200 rounded-xl text-[10px] font-mono overflow-auto max-h-40"></div>
+        <div id="status" class="text-center mb-6 font-bold text-indigo-500 italic">Redo!</div>
+        <div id="gameGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
     </div>
 
     <script>
         const USERNAME = 'zebbas';
-        const PROXY = "https://corsproxy.io/?";
-
-        async function fetchBGG(url) {
-            try {
-                const response = await fetch(PROXY + encodeURIComponent(url + "&nocache=" + Date.now()));
-                const text = await response.text();
-                if (text.includes("accepted") || text.length < 100) return "queued";
-                return new DOMParser().parseFromString(text, "text/xml");
-            } catch (e) { return null; }
-        }
+        
+        // Vi använder en extremt enkel proxy för att minska felkällor
+        const PROXY = "https://api.allorigins.win/get?url=";
 
         document.getElementById('fetchBtn').addEventListener('click', async () => {
             const count = document.getElementById('playerCount').value;
             const status = document.getElementById('status');
             const grid = document.getElementById('gameGrid');
-            const debug = document.getElementById('debug');
             const btn = document.getElementById('fetchBtn');
 
             grid.innerHTML = "";
-            debug.innerHTML = "Logg:<br>";
-            debug.classList.add('hidden');
             btn.disabled = true;
-            status.innerText = "Hämtar samling...";
+            status.innerText = "Väcker BGG (kan ta 10-20 sekunder)...";
 
             try {
-                const colUrl = `https://boardgamegeek.com/xmlapi2/collection?username=${USERNAME}&own=1&excludesubtype=boardgameexpansion`;
-                let xml = await fetchBGG(colUrl);
+                // VIKTIGT: Vi hämtar ALLT i ett svep med stats=1
+                const url = `https://boardgamegeek.com/xmlapi2/collection?username=${USERNAME}&own=1&excludesubtype=boardgameexpansion&stats=1`;
+                
+                const response = await fetch(PROXY + encodeURIComponent(url));
+                const json = await response.json();
+                const parser = new DOMParser();
+                const xml = parser.parseFromString(json.contents, "text/xml");
 
-                let retries = 0;
-                while ((xml === "queued" || !xml) && retries < 8) {
-                    retries++;
-                    status.innerText = `BGG förbereder listan (Försök ${retries}/8)...`;
-                    await new Promise(r => setTimeout(r, 4000));
-                    xml = await fetchBGG(colUrl);
+                if (xml.querySelector('message')) {
+                    status.innerText = "BGG köar din begäran. Vänta 10 sek och tryck igen.";
+                    btn.disabled = false;
+                    return;
                 }
 
                 const items = Array.from(xml.querySelectorAll('item'));
-                if (items.length === 0) throw new Error("Tom samling.");
-
-                const allIds = items.map(i => i.getAttribute('objectid'));
-                status.innerText = `Hittade ${allIds.length} spel. Analyserar...`;
-
-                // Hämta detaljer i klumpar om 14 (lagom för de flesta proxys)
-                for (let i = 0; i < allIds.length; i += 14) {
-                    const chunk = allIds.slice(i, i + 14);
-                    const detailsXml = await fetchBGG(`https://boardgamegeek.com/xmlapi2/thing?id=${chunk.join(',')}&stats=1`);
-                    if (!detailsXml) continue;
-
-                    detailsXml.querySelectorAll('item').forEach(game => {
-                        const title = game.querySelector('name[type="primary"]')?.getAttribute('value');
-                        const thumb = game.querySelector('thumbnail')?.textContent || '';
-                        const avg = game.querySelector('stats rating average')?.getAttribute('value');
-                        
-                        const poll = game.querySelector('poll[name="suggested_numplayers"]');
-                        // Smart sökning: Letar efter exakt siffra eller siffran följt av +
-                        const results = Array.from(poll?.querySelectorAll('results') || [])
-                                            .find(r => r.getAttribute('numplayers') === count || r.getAttribute('numplayers') === count + "+");
-
-                        if (results) {
-                            const v = (val) => parseInt(results.querySelector(`result[value="${val}"]`)?.getAttribute('numvotes') || 0);
-                            const best = v("Best"), rec = v("Recommended"), not = v("Not Recommended");
-
-                            if ((best + rec) >= not && (best + rec) > 0) {
-                                renderCard(title, thumb, avg, best > rec);
-                            } else {
-                                debug.innerHTML += `Skippade ${title}: (B:${best} R:${rec} N:${not})<br>`;
-                            }
-                        }
-                    });
+                if (items.length === 0) {
+                    status.innerText = "Hittade inga spel. Testa igen om en liten stund.";
+                    btn.disabled = false;
+                    return;
                 }
-                
-                status.innerText = grid.children.length > 0 ? "Klart!" : "Inga spel matchade. Se logg nedan.";
-                if (grid.children.length === 0) debug.classList.remove('hidden');
 
+                status.innerText = "Analyserar spel...";
+
+                const results = [];
+                items.forEach(item => {
+                    const title = item.querySelector('name').textContent;
+                    const thumb = item.querySelector('thumbnail')?.textContent || '';
+                    const myRating = item.querySelector('stats rating')?.getAttribute('value');
+                    const avgRating = item.querySelector('stats rating average')?.getAttribute('value');
+                    
+                    // Hämtar spelarantal från stats-modulen (finns ofta med i collection-api:et om man har tur)
+                    const minPlayers = parseInt(item.querySelector('stats')?.getAttribute('minplayers'));
+                    const maxPlayers = parseInt(item.querySelector('stats')?.getAttribute('maxplayers'));
+                    const selectedCount = parseInt(count);
+
+                    if (selectedCount >= minPlayers && selectedCount <= maxPlayers) {
+                        results.push({
+                            title, thumb, 
+                            myRating: myRating !== "N/A" ? parseFloat(myRating).toFixed(1) : "-",
+                            avgRating: parseFloat(avgRating).toFixed(1),
+                            sortScore: parseFloat(avgRating)
+                        });
+                    }
+                });
+
+                results.sort((a, b) => b.sortScore - a.sortScore);
+
+                if (results.length === 0) {
+                    status.innerText = "Inga spel matchade det antalet.";
+                } else {
+                    status.innerText = `Hittade ${results.length} spel som fungerar för ${count}!`;
+                    grid.innerHTML = results.map(game => `
+                        <div class="bg-white rounded-2xl overflow-hidden shadow-md border border-slate-100 p-4">
+                            <img src="${game.thumb}" class="w-full h-32 object-contain mb-4">
+                            <h3 class="font-bold text-sm text-slate-800 h-10 line-clamp-2 mb-4">${game.title}</h3>
+                            <div class="flex justify-between border-t pt-3">
+                                <div class="text-center"><p class="text-[8px] uppercase font-bold text-slate-400">Mig</p><p class="font-black text-indigo-600">${game.myRating}</p></div>
+                                <div class="text-center"><p class="text-[8px] uppercase font-bold text-slate-400">BGG</p><p class="font-black text-slate-700">${game.avgRating}</p></div>
+                            </div>
+                        </div>
+                    `).join('');
+                }
             } catch (err) {
-                status.innerText = "BGG svarar inte. Vänta en stund och testa igen.";
+                status.innerText = "Något gick fel. Testa igen om en stund.";
             } finally {
                 btn.disabled = false;
             }
         });
-
-        function renderCard(title, img, avg, isBest) {
-            const grid = document.getElementById('gameGrid');
-            const div = document.createElement('div');
-            div.className = "game-card bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 flex flex-col h-full";
-            div.innerHTML = `
-                <div class="relative h-44 bg-slate-100">
-                    <img src="${img}" class="w-full h-full object-cover">
-                    <span class="absolute top-3 right-3 ${isBest ? 'bg-amber-400 text-amber-900' : 'bg-indigo-600 text-white'} text-[10px] font-black px-3 py-1.5 rounded-full shadow-lg">
-                        ${isBest ? '⭐ BÄST' : '👍 REK.'}
-                    </span>
-                </div>
-                <div class="p-5 flex-grow flex flex-col justify-between">
-                    <h3 class="font-bold text-slate-800 text-sm leading-tight mb-4">${title}</h3>
-                    <div class="flex justify-between items-center border-t pt-4">
-                        <span class="text-[10px] uppercase font-black text-slate-300 italic">BGG Rating</span>
-                        <span class="text-xl font-black text-slate-700 italic">${parseFloat(avg).toFixed(1)}</span>
-                    </div>
-                </div>`;
-            grid.appendChild(div);
-            // Sortera vid varje nytt kort
-            Array.from(grid.children)
-                 .sort((a,b) => parseFloat(b.querySelector('.text-xl').innerText) - parseFloat(a.querySelector('.text-xl').innerText))
-                 .forEach(c => grid.appendChild(c));
-        }
     </script>
 </body>
 </html>
