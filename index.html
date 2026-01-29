@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Zebbas Spelhylla</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .game-card { animation: fadeIn 0.5s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-800 font-sans">
     <div class="max-w-6xl mx-auto px-4 py-8">
@@ -26,13 +30,13 @@
                         <option value="6">6+ Personer</option>
                     </select>
                 </div>
-                <button id="fetchBtn" class="w-full bg-indigo-600 text-white py-4 rounded-2xl hover:bg-indigo-700 font-black shadow-lg shadow-indigo-200 transition-all active:scale-95 uppercase">
+                <button id="fetchBtn" class="w-full bg-indigo-600 text-white py-4 rounded-2xl hover:bg-indigo-700 font-black shadow-lg shadow-indigo-200 transition-all active:scale-95 uppercase italic">
                     Hitta Spel
                 </button>
             </div>
         </div>
 
-        <div id="status" class="text-center mb-6 font-medium text-slate-500 text-sm italic">Redo att hämta spel...</div>
+        <div id="status" class="text-center mb-6 font-bold text-indigo-500">Redo!</div>
         <div id="gameGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div>
     </div>
 
@@ -44,12 +48,10 @@
             try {
                 const response = await fetch(PROXY + encodeURIComponent(url));
                 if (response.status === 202) return "queued";
-                if (!response.ok) return null;
                 const text = await response.text();
+                if (text.includes("Your request for this collection has been accepted")) return "queued";
                 return new DOMParser().parseFromString(text, "text/xml");
-            } catch (e) {
-                return null;
-            }
+            } catch (e) { return null; }
         }
 
         document.getElementById('fetchBtn').addEventListener('click', async () => {
@@ -60,100 +62,94 @@
 
             grid.innerHTML = "";
             btn.disabled = true;
-            status.innerText = "Kontaktar BGG... (Detta kan ta upp till 30 sekunder)";
+            status.innerText = "Väcker BoardGameGeek...";
 
             try {
-                // Steg 1: Hämta samlingen
-                const collectionUrl = `https://boardgamegeek.com/xmlapi2/collection?username=${USERNAME}&own=1&excludesubtype=boardgameexpansion&stats=1`;
-                let xml = await fetchBGG(collectionUrl);
+                // Steg 1: Hämta bara ID-listan (utan stats för att det ska gå snabbt)
+                const colUrl = `https://boardgamegeek.com/xmlapi2/collection?username=${USERNAME}&own=1&excludesubtype=boardgameexpansion`;
+                let xml = await fetchBGG(colUrl);
 
-                // Hantera BGG-kö
                 let retries = 0;
-                while ((xml === "queued" || !xml || xml.querySelector('message')) && retries < 6) {
+                while ((xml === "queued" || !xml || xml.querySelectorAll('item').length === 0) && retries < 10) {
                     retries++;
-                    status.innerText = `BGG förbereder din lista... försök ${retries}/6`;
-                    await new Promise(r => setTimeout(r, 5000));
-                    xml = await fetchBGG(collectionUrl);
+                    status.innerText = `BGG förbereder listan (Försök ${retries}/10)...`;
+                    await new Promise(r => setTimeout(r, 3000));
+                    xml = await fetchBGG(colUrl);
                 }
 
                 const items = Array.from(xml.querySelectorAll('item'));
-                if (items.length === 0) throw new Error("Kunde inte ladda samlingen.");
+                const allIds = items.map(i => i.getAttribute('objectid'));
+                status.innerText = `Hittade ${allIds.length} spel. Hämtar detaljer...`;
 
-                status.innerText = `Hittade ${items.length} spel. Analyserar spelarantal...`;
-
-                // Steg 2: Hämta detaljer (vi gör detta i klumpar om 20 för att undvika timeout)
-                const ids = items.map(i => i.getAttribute('objectid'));
-                const finalGames = [];
-                
-                // Vi gör ett samlat anrop för detaljer
-                const detailsXml = await fetchBGG(`https://boardgamegeek.com/xmlapi2/thing?id=${ids.join(',')}&stats=1`);
-                if (!detailsXml) throw new Error("Kunde inte hämta speldetaljer.");
-
-                const gamesData = detailsXml.querySelectorAll('item');
-
-                gamesData.forEach(game => {
-                    const id = game.getAttribute('id');
-                    const title = game.querySelector('name[type="primary"]')?.getAttribute('value') || "Okänd titel";
-                    const thumb = game.querySelector('thumbnail')?.textContent || '';
+                // Steg 2: Hämta detaljer i klumpar om 10 för att undvika timeout
+                for (let i = 0; i < allIds.length; i += 10) {
+                    const chunk = allIds.slice(i, i + 10);
+                    status.innerText = `Analyserar spel ${i + 1} till ${Math.min(i + 10, allIds.length)} av ${allIds.length}...`;
                     
-                    const colItem = items.find(i => i.getAttribute('objectid') === id);
-                    const myRating = colItem?.querySelector('stats rating')?.getAttribute('value');
-                    const avgRating = colItem?.querySelector('stats rating average')?.getAttribute('value');
+                    const detailsXml = await fetchBGG(`https://boardgamegeek.com/xmlapi2/thing?id=${chunk.join(',')}&stats=1`);
+                    if (!detailsXml) continue;
 
-                    // Hämta röstning för spelarantal
-                    const poll = game.querySelector('poll[name="suggested_numplayers"]');
-                    const results = poll?.querySelector(`results[numplayers="${count}"]`) || 
-                                    poll?.querySelector(`results[numplayers="${count}+"]`);
+                    const gamesData = detailsXml.querySelectorAll('item');
+                    gamesData.forEach(game => {
+                        const title = game.querySelector('name[type="primary"]')?.getAttribute('value');
+                        const thumb = game.querySelector('thumbnail')?.textContent || '';
+                        const avgRating = game.querySelector('stats rating average')?.getAttribute('value');
 
-                    if (results) {
-                        const best = parseInt(results.querySelector('result[value="Best"]').getAttribute('numvotes')) || 0;
-                        const rec = parseInt(results.querySelector('result[value="Recommended"]').getAttribute('numvotes')) || 0;
-                        const notRec = parseInt(results.querySelector('result[value="Not Recommended"]').getAttribute('numvotes')) || 0;
+                        const poll = game.querySelector('poll[name="suggested_numplayers"]');
+                        const results = poll?.querySelector(`results[numplayers="${count}"]`) || 
+                                        poll?.querySelector(`results[numplayers="${count}+"]`);
 
-                        if ((best + rec) > notRec) {
-                            finalGames.push({
-                                title, img: thumb,
-                                myRating: (myRating && myRating !== "N/A") ? parseFloat(myRating).toFixed(1) : "-",
-                                avgRating: parseFloat(avgRating).toFixed(1),
-                                isBest: best >= rec && best > notRec,
-                                sortScore: parseFloat(avgRating)
-                            });
+                        if (results) {
+                            const best = parseInt(results.querySelector('result[value="Best"]').getAttribute('numvotes')) || 0;
+                            const rec = parseInt(results.querySelector('result[value="Recommended"]').getAttribute('numvotes')) || 0;
+                            const notRec = parseInt(results.querySelector('result[value="Not Recommended"]').getAttribute('numvotes')) || 0;
+
+                            if ((best + rec) > notRec) {
+                                const isBest = best >= rec && best > notRec;
+                                renderCard(title, thumb, avgRating, isBest);
+                            }
                         }
-                    }
-                });
-
-                finalGames.sort((a, b) => b.sortScore - a.sortScore);
-                
-                if (finalGames.length === 0) {
-                    status.innerText = "Inga spel matchade filtreringen.";
-                } else {
-                    status.innerText = `Klart! Hittade ${finalGames.length} spel.`;
-                    grid.innerHTML = finalGames.map(game => `
-                        <div class="bg-white rounded-2xl overflow-hidden shadow-md border border-slate-100 flex flex-col h-full">
-                            <div class="relative h-40 bg-slate-100">
-                                <img src="${game.img}" class="w-full h-full object-cover">
-                                <span class="absolute top-2 right-2 ${game.isBest ? 'bg-amber-400' : 'bg-indigo-500 text-white'} text-[10px] font-bold px-2 py-1 rounded-md shadow-sm">
-                                    ${game.isBest ? '⭐ BÄST' : '👍 REK.'}
-                                </span>
-                            </div>
-                            <div class="p-4 flex-grow flex flex-col justify-between">
-                                <h3 class="font-bold text-slate-800 text-sm leading-tight mb-4">${game.title}</h3>
-                                <div class="flex justify-between border-t pt-3">
-                                    <div class="text-center"><p class="text-[9px] text-slate-400 uppercase font-bold text-[8px]">Mig</p><p class="text-md font-black text-indigo-600">${game.myRating}</p></div>
-                                    <div class="text-center"><p class="text-[9px] text-slate-400 uppercase font-bold text-[8px]">BGG</p><p class="text-md font-black text-slate-700">${game.avgRating}</p></div>
-                                </div>
-                            </div>
-                        </div>
-                    `).join('');
+                    });
                 }
+                status.innerText = "Alla spel har analyserats!";
 
             } catch (err) {
-                status.innerText = "BGG svarade inte i tid. Vänta 10 sekunder och prova igen.";
-                console.error(err);
+                status.innerText = "Ett fel uppstod. Prova igen.";
             } finally {
                 btn.disabled = false;
             }
         });
+
+        function renderCard(title, img, avg, isBest) {
+            const grid = document.getElementById('gameGrid');
+            const card = document.createElement('div');
+            card.className = "game-card bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-100 flex flex-col h-full";
+            card.innerHTML = `
+                <div class="relative h-40 bg-slate-100 uppercase italic">
+                    <img src="${img}" class="w-full h-full object-cover">
+                    <span class="absolute top-2 right-2 ${isBest ? 'bg-amber-400' : 'bg-indigo-500 text-white'} text-[9px] font-black px-2 py-1 rounded shadow-sm uppercase">
+                        ${isBest ? '⭐ Bäst' : '👍 Rek.'}
+                    </span>
+                </div>
+                <div class="p-4 flex-grow flex flex-col justify-between">
+                    <h3 class="font-bold text-slate-800 text-sm leading-tight mb-4">${title}</h3>
+                    <div class="border-t pt-3 flex justify-between items-center">
+                        <span class="text-[9px] text-slate-400 uppercase font-bold uppercase italic">BGG Rating</span>
+                        <span class="text-md font-black text-slate-700 italic">${parseFloat(avg).toFixed(1)}</span>
+                    </div>
+                </div>
+            `;
+            grid.appendChild(card);
+            
+            // Sortera korten efter betyg (valfritt, men snyggt)
+            const cards = Array.from(grid.children);
+            cards.sort((a, b) => {
+                const rateA = parseFloat(a.querySelector('.font-black').innerText);
+                const rateB = parseFloat(b.querySelector('.font-black').innerText);
+                return rateB - rateA;
+            });
+            cards.forEach(c => grid.appendChild(c));
+        }
     </script>
 </body>
 </html>
