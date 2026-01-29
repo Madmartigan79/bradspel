@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zebbas Spelhylla</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .game-card { transition: all 0.3s ease; }
+        .game-card:hover { transform: translateY(-5px); }
+        .loading-dot { animation: blink 1.4s infinite both; }
+        .loading-dot:nth-child(2) { animation-delay: .2s; }
+        .loading-dot:nth-child(3) { animation-delay: .4s; }
+        @keyframes blink { 0% { opacity: .2; } 20% { opacity: 1; } 100% { opacity: .2; } }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800 font-sans">
+    <div class="max-w-6xl mx-auto px-4 py-8">
+        <header class="text-center mb-12">
+            <h1 class="text-5xl font-black mb-2 text-indigo-900 tracking-tight">ZEBBAS GAMES</h1>
+            <p class="text-slate-500 font-medium">Hittar de bästa spelen från din BGG-samling</p>
+        </header>
+
+        <div class="bg-white p-6 rounded-3xl shadow-xl border border-slate-100 mb-10 max-w-2xl mx-auto">
+            <div class="flex flex-col sm:flex-row items-end gap-4">
+                <div class="flex-grow">
+                    <label class="block text-[10px] font-bold uppercase text-slate-400 mb-2 ml-1 tracking-widest">Antal spelare</label>
+                    <select id="playerCount" class="w-full border-2 border-slate-100 rounded-2xl p-3 bg-slate-50 font-bold focus:border-indigo-500 outline-none transition-all text-lg cursor-pointer">
+                        <option value="1">1 Person</option>
+                        <option value="2" selected>2 Personer</option>
+                        <option value="3">3 Personer</option>
+                        <option value="4">4 Personer</option>
+                        <option value="5">5 Personer</option>
+                        <option value="6">6+ Personer</option>
+                    </select>
+                </div>
+                <button id="fetchBtn" class="bg-indigo-600 text-white px-8 py-4 rounded-2xl hover:bg-indigo-700 font-black shadow-lg shadow-indigo-200 transition-all active:scale-95 uppercase tracking-wider">
+                    Hitta Spel
+                </button>
+            </div>
+        </div>
+
+        <div id="statusContainer" class="hidden text-center mb-10">
+            <p id="statusText" class="font-bold text-indigo-500 text-lg mb-2 inline-block">Väcker BoardGameGeek</p>
+            <span class="loading-dot text-indigo-500 text-2xl">.</span>
+            <span class="loading-dot text-indigo-500 text-2xl">.</span>
+            <span class="loading-dot text-indigo-500 text-2xl">.</span>
+        </div>
+        
+        <div id="gameGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div>
+    </div>
+
+    <script>
+        const USERNAME = 'zebbas';
+        const fetchBtn = document.getElementById('fetchBtn');
+        const statusText = document.getElementById('statusText');
+        const statusContainer = document.getElementById('statusContainer');
+        const gameGrid = document.getElementById('gameGrid');
+
+        // Ny proxy som är mer stabil för XML
+        const getUrl = (target) => `https://api.allorigins.win/get?url=${encodeURIComponent(target)}&timestamp=${Date.now()}`;
+
+        async function fetchBGG(url) {
+            const res = await fetch(getUrl(url));
+            const json = await res.json();
+            if (!json.contents) return null;
+            return new DOMParser().parseFromString(json.contents, "text/xml");
+        }
+
+        fetchBtn.addEventListener('click', async () => {
+            const count = document.getElementById('playerCount').value;
+            gameGrid.innerHTML = "";
+            statusContainer.classList.remove('hidden');
+            fetchBtn.disabled = true;
+
+            try {
+                const collectionUrl = `https://boardgamegeek.com/xmlapi2/collection?username=${USERNAME}&own=1&excludesubtype=boardgameexpansion&stats=1`;
+                let xml = await fetchBGG(collectionUrl);
+
+                // Retry-loop om BGG returnerar kö-meddelande (202)
+                let attempts = 0;
+                while ((!xml || xml.querySelectorAll('item').length === 0) && attempts < 10) {
+                    attempts++;
+                    statusText.innerText = `BGG förbereder din samling (Försök ${attempts}/10)`;
+                    await new Promise(r => setTimeout(r, 4000));
+                    xml = await fetchBGG(collectionUrl);
+                }
+
+                const items = Array.from(xml.querySelectorAll('item'));
+                if (items.length === 0) throw new Error("Kunde inte hämta samlingen. Testa att ladda om sidan om en minut.");
+
+                // Dela upp ID:n i klumpar om 20 för att inte överbelasta proxyn
+                const ids = items.map(i => i.getAttribute('objectid'));
+                statusText.innerText = `Analyserar ${items.length} spel...`;
+
+                const finalGames = [];
+                
+                // Vi hämtar detaljer för alla spel i en förfrågan
+                const detailsXml = await fetchBGG(`https://boardgamegeek.com/xmlapi2/thing?id=${ids.join(',')}&stats=1`);
+                const gamesData = detailsXml.querySelectorAll('item');
+
+                gamesData.forEach(game => {
+                    const id = game.getAttribute('id');
+                    const title = game.querySelector('name[type="primary"]').getAttribute('value');
+                    const thumb = game.querySelector('thumbnail')?.textContent || '';
+                    
+                    const collectionItem = items.find(i => i.getAttribute('objectid') === id);
+                    const myRating = collectionItem?.querySelector('stats rating')?.getAttribute('value');
+                    const avgRating = collectionItem?.querySelector('stats rating average')?.getAttribute('value');
+
+                    const poll = game.querySelector('poll[name="suggested_numplayers"]');
+                    const results = poll?.querySelector(`results[numplayers="${count}"]`) || 
+                                    poll?.querySelector(`results[numplayers="${count}+"]`);
+
+                    if (results) {
+                        const best = parseInt(results.querySelector('result[value="Best"]').getAttribute('numvotes'));
+                        const rec = parseInt(results.querySelector('result[value="Recommended"]').getAttribute('numvotes'));
+                        const notRec = parseInt(results.querySelector('result[value="Not Recommended"]').getAttribute('numvotes'));
+
+                        if (best > notRec || (best + rec) > notRec) {
+                            finalGames.push({
+                                title,
+                                img: thumb,
+                                myRating: (myRating && myRating !== "N/A") ? parseFloat(myRating).toFixed(1) : "-",
+                                avgRating: parseFloat(avgRating).toFixed(1),
+                                isBest: best >= rec && best > notRec,
+                                sortScore: parseFloat(avgRating)
+                            });
+                        }
+                    }
+                });
+
+                finalGames.sort((a, b) => b.sortScore - a.sortScore);
+                statusContainer.classList.add('hidden');
+                
+                if (finalGames.length === 0) {
+                    statusContainer.classList.remove('hidden');
+                    statusText.innerText = `Inga spel rekommenderas för ${count} spelare.`;
+                } else {
+                    render(finalGames);
+                }
+
+            } catch (err) {
+                statusText.innerText = "Oj! Något gick fel. Testa igen.";
+                console.error(err);
+            } finally {
+                fetchBtn.disabled = false;
+            }
+        });
+
+        function render(games) {
+            gameGrid.innerHTML = games.map(game => `
+                <div class="game-card bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 flex flex-col">
+                    <div class="relative h-44 bg-slate-200">
+                        <img src="${game.img}" class="w-full h-full object-cover" loading="lazy">
+                        <span class="absolute top-3 right-3 ${game.isBest ? 'bg-amber-400 text-amber-900' : 'bg-indigo-500 text-white'} text-[10px] font-black px-3 py-1.5 rounded-full shadow-lg uppercase tracking-tighter">
+                            ${game.isBest ? '⭐ Bäst' : '👍 Rek.'}
+                        </span>
+                    </div>
+                    <div class="p-5 flex-grow flex flex-col justify-between">
+                        <h3 class="text-md font-bold text-slate-800 leading-tight mb-4 line-clamp-2">${game.title}</h3>
+                        <div class="grid grid-cols-2 gap-2 border-t pt-4 border-slate-50 text-center">
+                            <div>
+                                <p class="text-[9px] uppercase font-bold text-slate-400 tracking-tighter">Mitt Betyg</p>
+                                <p class="text-lg font-black text-indigo-600">${game.myRating}</p>
+                            </div>
+                            <div>
+                                <p class="text-[9px] uppercase font-bold text-slate-400 tracking-tighter">BGG Snitt</p>
+                                <p class="text-lg font-black text-slate-700">${game.avgRating}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+    </script>
+</body>
+</html>
