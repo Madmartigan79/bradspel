@@ -8,16 +8,16 @@
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-800 font-sans">
     <div class="max-w-6xl mx-auto px-4 py-8">
-        <header class="text-center mb-12">
-            <h1 class="text-5xl font-black mb-2 text-indigo-900 tracking-tight uppercase italic">Zebbas Games</h1>
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-black mb-2 text-indigo-900 tracking-tight uppercase italic">Zebbas Games</h1>
             <div class="h-1 w-20 bg-indigo-500 mx-auto"></div>
         </header>
 
-        <div class="bg-white p-6 rounded-3xl shadow-xl border border-slate-100 mb-10 max-w-2xl mx-auto">
-            <div class="flex flex-col sm:flex-row items-end gap-4">
-                <div class="flex-grow">
-                    <label class="block text-[10px] font-bold uppercase text-slate-400 mb-2 tracking-widest">Antal spelare</label>
-                    <select id="playerCount" class="w-full border-2 border-slate-100 rounded-2xl p-3 bg-slate-50 font-bold focus:border-indigo-500 outline-none transition-all text-lg">
+        <div class="bg-white p-6 rounded-3xl shadow-xl border border-slate-100 mb-8 max-w-md mx-auto">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-[10px] font-bold uppercase text-slate-400 mb-2 tracking-widest text-center">Antal spelare</label>
+                    <select id="playerCount" class="w-full border-2 border-slate-100 rounded-2xl p-4 bg-slate-50 font-bold focus:border-indigo-500 outline-none text-xl">
                         <option value="1">1 Person</option>
                         <option value="2" selected>2 Personer</option>
                         <option value="3">3 Personer</option>
@@ -26,83 +26,91 @@
                         <option value="6">6+ Personer</option>
                     </select>
                 </div>
-                <button id="fetchBtn" class="bg-indigo-600 text-white px-8 py-4 rounded-2xl hover:bg-indigo-700 font-black shadow-lg shadow-indigo-200 transition-all uppercase tracking-wider">
-                    Hämta Spel
+                <button id="fetchBtn" class="w-full bg-indigo-600 text-white py-4 rounded-2xl hover:bg-indigo-700 font-black shadow-lg shadow-indigo-200 transition-all active:scale-95 uppercase">
+                    Hitta Spel
                 </button>
             </div>
         </div>
 
-        <div id="status" class="text-center mb-10 font-bold text-indigo-500 min-h-[2rem]"></div>
+        <div id="status" class="text-center mb-6 font-medium text-slate-500 text-sm italic">Redo att hämta spel...</div>
         <div id="gameGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div>
     </div>
 
     <script>
         const USERNAME = 'zebbas';
-        const fetchBtn = document.getElementById('fetchBtn');
-        const status = document.getElementById('status');
-        const gameGrid = document.getElementById('gameGrid');
-
-        // Ny, mer stabil proxy
         const PROXY = "https://corsproxy.io/?";
 
         async function fetchBGG(url) {
-            const response = await fetch(PROXY + encodeURIComponent(url));
-            if (!response.ok) return null;
-            const text = await response.text();
-            return new DOMParser().parseFromString(text, "text/xml");
+            try {
+                const response = await fetch(PROXY + encodeURIComponent(url));
+                if (response.status === 202) return "queued";
+                if (!response.ok) return null;
+                const text = await response.text();
+                return new DOMParser().parseFromString(text, "text/xml");
+            } catch (e) {
+                return null;
+            }
         }
 
-        fetchBtn.addEventListener('click', async () => {
+        document.getElementById('fetchBtn').addEventListener('click', async () => {
             const count = document.getElementById('playerCount').value;
-            gameGrid.innerHTML = "";
-            fetchBtn.disabled = true;
-            status.innerText = "Hämtar din samling...";
+            const status = document.getElementById('status');
+            const grid = document.getElementById('gameGrid');
+            const btn = document.getElementById('fetchBtn');
+
+            grid.innerHTML = "";
+            btn.disabled = true;
+            status.innerText = "Kontaktar BGG... (Detta kan ta upp till 30 sekunder)";
 
             try {
+                // Steg 1: Hämta samlingen
                 const collectionUrl = `https://boardgamegeek.com/xmlapi2/collection?username=${USERNAME}&own=1&excludesubtype=boardgameexpansion&stats=1`;
                 let xml = await fetchBGG(collectionUrl);
 
-                // Om BGG köar (svarar 202/tomt), försök igen
+                // Hantera BGG-kö
                 let retries = 0;
-                while ((!xml || xml.querySelector('message')) && retries < 5) {
-                    status.innerText = `BGG förbereder listan... (Försök ${++retries})`;
-                    await new Promise(r => setTimeout(r, 4000));
+                while ((xml === "queued" || !xml || xml.querySelector('message')) && retries < 6) {
+                    retries++;
+                    status.innerText = `BGG förbereder din lista... försök ${retries}/6`;
+                    await new Promise(r => setTimeout(r, 5000));
                     xml = await fetchBGG(collectionUrl);
                 }
 
                 const items = Array.from(xml.querySelectorAll('item'));
-                if (items.length === 0) {
-                    status.innerText = "Inga spel hittades. Testa att klicka igen om 10 sekunder.";
-                    return;
-                }
+                if (items.length === 0) throw new Error("Kunde inte ladda samlingen.");
 
                 status.innerText = `Hittade ${items.length} spel. Analyserar spelarantal...`;
 
-                const ids = items.map(i => i.getAttribute('objectid')).join(',');
-                const detailsXml = await fetchBGG(`https://boardgamegeek.com/xmlapi2/thing?id=${ids}&stats=1`);
-                const gamesData = detailsXml.querySelectorAll('item');
-
+                // Steg 2: Hämta detaljer (vi gör detta i klumpar om 20 för att undvika timeout)
+                const ids = items.map(i => i.getAttribute('objectid'));
                 const finalGames = [];
+                
+                // Vi gör ett samlat anrop för detaljer
+                const detailsXml = await fetchBGG(`https://boardgamegeek.com/xmlapi2/thing?id=${ids.join(',')}&stats=1`);
+                if (!detailsXml) throw new Error("Kunde inte hämta speldetaljer.");
+
+                const gamesData = detailsXml.querySelectorAll('item');
 
                 gamesData.forEach(game => {
                     const id = game.getAttribute('id');
-                    const title = game.querySelector('name[type="primary"]').getAttribute('value');
+                    const title = game.querySelector('name[type="primary"]')?.getAttribute('value') || "Okänd titel";
                     const thumb = game.querySelector('thumbnail')?.textContent || '';
                     
                     const colItem = items.find(i => i.getAttribute('objectid') === id);
                     const myRating = colItem?.querySelector('stats rating')?.getAttribute('value');
                     const avgRating = colItem?.querySelector('stats rating average')?.getAttribute('value');
 
+                    // Hämta röstning för spelarantal
                     const poll = game.querySelector('poll[name="suggested_numplayers"]');
                     const results = poll?.querySelector(`results[numplayers="${count}"]`) || 
                                     poll?.querySelector(`results[numplayers="${count}+"]`);
 
                     if (results) {
-                        const best = parseInt(results.querySelector('result[value="Best"]').getAttribute('numvotes'));
-                        const rec = parseInt(results.querySelector('result[value="Recommended"]').getAttribute('numvotes'));
-                        const notRec = parseInt(results.querySelector('result[value="Not Recommended"]').getAttribute('numvotes'));
+                        const best = parseInt(results.querySelector('result[value="Best"]').getAttribute('numvotes')) || 0;
+                        const rec = parseInt(results.querySelector('result[value="Recommended"]').getAttribute('numvotes')) || 0;
+                        const notRec = parseInt(results.querySelector('result[value="Not Recommended"]').getAttribute('numvotes')) || 0;
 
-                        if (best > notRec || (best + rec) > notRec) {
+                        if ((best + rec) > notRec) {
                             finalGames.push({
                                 title, img: thumb,
                                 myRating: (myRating && myRating !== "N/A") ? parseFloat(myRating).toFixed(1) : "-",
@@ -115,31 +123,35 @@
                 });
 
                 finalGames.sort((a, b) => b.sortScore - a.sortScore);
-                status.innerText = finalGames.length > 0 ? "" : "Inga passande spel hittades.";
                 
-                gameGrid.innerHTML = finalGames.map(game => `
-                    <div class="bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 flex flex-col h-full">
-                        <div class="relative h-44 bg-slate-100">
-                            <img src="${game.img}" class="w-full h-full object-cover">
-                            <span class="absolute top-3 right-3 ${game.isBest ? 'bg-amber-400 text-amber-900' : 'bg-indigo-600 text-white'} text-[10px] font-black px-3 py-1.5 rounded-full shadow-lg">
-                                ${game.isBest ? '⭐ BÄST' : '👍 REK.'}
-                            </span>
-                        </div>
-                        <div class="p-5 flex-grow flex flex-col justify-between">
-                            <h3 class="font-bold text-slate-800 leading-tight mb-4">${game.title}</h3>
-                            <div class="flex justify-between border-t pt-4">
-                                <div class="text-center text-xs font-bold uppercase text-slate-400">Mig<br><span class="text-lg text-indigo-600 font-black">${game.myRating}</span></div>
-                                <div class="text-center text-xs font-bold uppercase text-slate-400">BGG<br><span class="text-lg text-slate-700 font-black">${game.avgRating}</span></div>
+                if (finalGames.length === 0) {
+                    status.innerText = "Inga spel matchade filtreringen.";
+                } else {
+                    status.innerText = `Klart! Hittade ${finalGames.length} spel.`;
+                    grid.innerHTML = finalGames.map(game => `
+                        <div class="bg-white rounded-2xl overflow-hidden shadow-md border border-slate-100 flex flex-col h-full">
+                            <div class="relative h-40 bg-slate-100">
+                                <img src="${game.img}" class="w-full h-full object-cover">
+                                <span class="absolute top-2 right-2 ${game.isBest ? 'bg-amber-400' : 'bg-indigo-500 text-white'} text-[10px] font-bold px-2 py-1 rounded-md shadow-sm">
+                                    ${game.isBest ? '⭐ BÄST' : '👍 REK.'}
+                                </span>
+                            </div>
+                            <div class="p-4 flex-grow flex flex-col justify-between">
+                                <h3 class="font-bold text-slate-800 text-sm leading-tight mb-4">${game.title}</h3>
+                                <div class="flex justify-between border-t pt-3">
+                                    <div class="text-center"><p class="text-[9px] text-slate-400 uppercase font-bold text-[8px]">Mig</p><p class="text-md font-black text-indigo-600">${game.myRating}</p></div>
+                                    <div class="text-center"><p class="text-[9px] text-slate-400 uppercase font-bold text-[8px]">BGG</p><p class="text-md font-black text-slate-700">${game.avgRating}</p></div>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                `).join('');
+                    `).join('');
+                }
 
             } catch (err) {
-                status.innerText = "Något gick fel. Testa att ladda om sidan.";
+                status.innerText = "BGG svarade inte i tid. Vänta 10 sekunder och prova igen.";
                 console.error(err);
             } finally {
-                fetchBtn.disabled = false;
+                btn.disabled = false;
             }
         });
     </script>
