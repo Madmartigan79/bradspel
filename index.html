@@ -13,18 +13,19 @@
         </header>
 
         <div id="setup" class="bg-slate-800 p-8 rounded-[2rem] border-4 border-indigo-600 mb-10 shadow-2xl">
-            <h2 class="text-xl mb-4 text-indigo-400 italic font-black">1. Klistra in BGG-XML</h2>
-            <textarea id="xmlInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-32 text-[10px] font-mono text-indigo-300 outline-none mb-4" placeholder="Klistra in din XML här..."></textarea>
+            <h2 class="text-xl mb-4 text-indigo-400 italic">1. Setup</h2>
+            <textarea id="xmlInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-32 text-[10px] font-mono text-indigo-300 outline-none mb-4" placeholder="Klistra in XML här..."></textarea>
             <button id="saveBtn" class="w-full bg-slate-700 p-4 rounded-xl text-xs font-black uppercase mb-8">Spara & Starta Synk</button>
             
             <div id="syncSection" class="hidden pt-6 border-t border-slate-700">
-                <h2 class="text-xl mb-4 text-amber-400 italic font-black">2. Synkar röstningsdata...</h2>
+                <h2 class="text-xl mb-4 text-amber-400 italic">2. Synkar...</h2>
                 <div class="w-full bg-slate-900 h-4 rounded-full overflow-hidden mb-4 border border-slate-700">
-                    <div id="progressBar" class="w-0 h-full bg-emerald-500 transition-all duration-500"></div>
+                    <div id="progressBar" class="w-0 h-full bg-emerald-500 transition-all duration-300"></div>
                 </div>
-                <div id="syncLog" class="text-[10px] text-slate-400 font-mono italic mb-4">Väntar...</div>
+                <div id="syncLog" class="text-[10px] text-slate-400 font-mono italic mb-6">Redo...</div>
+                <button id="goToShelfBtn" class="hidden w-full bg-emerald-600 text-white p-5 rounded-xl text-sm font-black shadow-xl animate-bounce">KLART! VISA MIN HYLLA →</button>
             </div>
-            <button onclick="localStorage.clear(); location.reload();" class="text-[8px] text-red-600 underline uppercase mt-4 block w-full opacity-50">Nollställ Allt</button>
+            <button onclick="localStorage.clear(); location.reload();" class="text-[8px] text-red-600 underline uppercase mt-6 block w-full opacity-50">Nollställ Allt</button>
         </div>
 
         <div id="filters" class="hidden bg-slate-800 p-6 rounded-[2rem] border border-slate-700 mb-6 shadow-xl">
@@ -37,18 +38,19 @@
                 <option value="6">6+ Personer</option>
             </select>
             <div class="grid grid-cols-3 gap-2">
-                <button onclick="setFilter('best')" id="btn-best" class="bg-indigo-600 p-4 rounded-xl text-[10px] font-black italic border-b-4 border-indigo-900">Bäst</button>
+                <button onclick="setFilter('best')" id="btn-best" class="bg-indigo-600 p-4 rounded-xl text-[10px] font-black italic border-b-4 border-indigo-900 shadow-lg">Bäst</button>
                 <button onclick="setFilter('rec')" id="btn-rec" class="bg-slate-700 p-4 rounded-xl text-[10px] font-black italic">Rek.</button>
                 <button onclick="setFilter('all')" id="btn-all" class="bg-slate-700 p-4 rounded-xl text-[10px] font-black italic">Alla</button>
             </div>
+            <button onclick="document.getElementById('setup').classList.remove('hidden');" class="mt-4 text-[8px] text-slate-600 uppercase tracking-widest font-bold">Ändra Setup ⚙️</button>
         </div>
+
         <div id="gameGrid" class="space-y-4 pb-20"></div>
     </div>
 
     <script>
-        // Vi använder en extremt stabil Google-proxy
         const PROXY = "https://images" + Math.floor(Math.random() * 3 + 1) + "-focus-opensocial.googleusercontent.com/gadgets/proxy?container=focus&refresh=600&url=";
-        let myGames = JSON.parse(localStorage.getItem('zebba_final_v99')) || [];
+        let myGames = JSON.parse(localStorage.getItem('zebba_final_v100')) || [];
         let filterLevel = 'best';
 
         function init() {
@@ -75,14 +77,14 @@
             document.getElementById('syncSection').classList.remove('hidden');
             document.getElementById('saveBtn').classList.add('hidden');
             
-            const chunkSize = 10;
+            const chunkSize = 15;
             const log = document.getElementById('syncLog');
             const bar = document.getElementById('progressBar');
 
             for (let i = 0; i < myGames.length; i += chunkSize) {
                 const chunk = myGames.slice(i, i + chunkSize);
                 const ids = chunk.map(g => g.id).join(',');
-                log.innerText = `Hämtar röster: ${i} / ${myGames.length}`;
+                log.innerText = `Bearbetar: ${Math.min(i + chunkSize, myGames.length)} av ${myGames.length}...`;
                 bar.style.width = (i / myGames.length * 100) + "%";
 
                 try {
@@ -90,35 +92,40 @@
                     const res = await fetch(url);
                     const text = await res.text();
                     
-                    const parser = new DOMParser();
-                    const xml = parser.parseFromString(text, "text/xml");
-                    const games = xml.querySelectorAll('boardgame');
-
-                    games.forEach(gXml => {
-                        const id = gXml.getAttribute('objectid');
+                    const gameBlocks = text.split('<boardgame ').slice(1);
+                    gameBlocks.forEach(block => {
+                        const id = block.match(/objectid="(\d+)"/)?.[1];
                         const game = myGames.find(x => x.id === id);
                         if (game) {
                             const polls = {};
-                            const poll = gXml.querySelector('poll[name="suggested_numplayers"]');
-                            if (poll) {
-                                poll.querySelectorAll('results').forEach(r => {
-                                    const n = r.getAttribute('numplayers');
-                                    const best = parseInt(r.querySelector('result[value="Best"]')?.getAttribute('numvotes') || 0);
-                                    const rec = parseInt(r.querySelector('result[value="Recommended"]')?.getAttribute('numvotes') || 0);
-                                    const not = parseInt(r.querySelector('result[value="Not Recommended"]')?.getAttribute('numvotes') || 0);
-                                    if (best > rec && best > not) polls[n] = "best";
-                                    else if ((best + rec) > not) polls[n] = "rec";
+                            const resultsBlocks = block.match(/<results numplayers="(\d+\+?)">[\s\S]*?<\/results>/g);
+                            if (resultsBlocks) {
+                                resultsBlocks.forEach(rb => {
+                                    const n = rb.match(/numplayers="(\d+\+?)"/)[1];
+                                    const b = parseInt(rb.match(/value="Best" numvotes="(\d+)"/)?.[1] || 0);
+                                    const r = parseInt(rb.match(/value="Recommended" numvotes="(\d+)"/)?.[1] || 0);
+                                    const x = parseInt(rb.match(/value="Not Recommended" numvotes="(\d+)"/)?.[1] || 0);
+                                    if (b > 0 && b >= r && b > x) polls[n] = "best";
+                                    else if ((b + r) > x) polls[n] = "rec";
                                 });
                             }
                             game.polls = polls;
                         }
                     });
-                } catch (e) { console.error("Synk-miss för grupp", i); }
-                await new Promise(r => setTimeout(r, 500));
+                    localStorage.setItem('zebba_final_v100', JSON.stringify(myGames));
+                } catch (e) { console.error("Fel vid synk", e); }
+                await new Promise(r => setTimeout(r, 600));
             }
 
-            localStorage.setItem('zebba_final_v99', JSON.stringify(myGames));
-            location.reload();
+            bar.style.width = "100%";
+            log.innerText = "SYNKA KLAR!";
+            document.getElementById('goToShelfBtn').classList.remove('hidden');
+        });
+
+        document.getElementById('goToShelfBtn').addEventListener('click', () => {
+            document.getElementById('setup').classList.add('hidden');
+            document.getElementById('filters').classList.remove('hidden');
+            render();
         });
 
         function setFilter(l) {
