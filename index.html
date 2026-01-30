@@ -10,22 +10,23 @@
     <div class="max-w-md mx-auto">
         <header class="mb-10">
             <h1 class="text-4xl font-black text-indigo-500 tracking-tighter italic uppercase">Zebbas Games</h1>
-            <p id="gameCount" class="text-slate-500 text-[10px] mt-2 italic tracking-widest uppercase">Väntar på setup</p>
+            <p id="gameCount" class="text-slate-500 text-[10px] mt-2 italic tracking-widest uppercase font-bold">Laddar...</p>
         </header>
 
-        <div id="importSection" class="bg-slate-800 p-8 rounded-[2rem] border-4 border-indigo-600 mb-10 shadow-2xl relative">
-            <h2 class="text-xl mb-4 text-indigo-400 font-black">1. Importera</h2>
+        <div id="importSection" class="bg-slate-800 p-8 rounded-[2rem] border-4 border-indigo-600 mb-10 shadow-2xl">
+            <h2 class="text-xl mb-4 text-indigo-400 font-black italic">1. Importera XML</h2>
             <textarea id="xmlInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-32 text-[10px] font-mono text-indigo-300 outline-none mb-4" placeholder="Klistra in XML här..."></textarea>
-            <button id="saveBtn" class="w-full bg-slate-700 p-4 rounded-xl text-xs mb-8 font-black uppercase">Spara Grundlista</button>
+            <button id="saveBtn" class="w-full bg-slate-700 p-4 rounded-xl text-xs mb-8 font-black uppercase">Spara & Gå till Synk</button>
             
             <div id="syncSection" class="pt-6 border-t border-slate-700">
-                <h2 class="text-xl mb-4 text-amber-400 italic">2. Synka Data</h2>
+                <h2 class="text-xl mb-4 text-amber-400 italic font-black">2. Synka röstningsdata</h2>
+                <p class="text-[9px] text-slate-400 mb-4 normal-case italic">Viktigt: Detta tar bort expansioner och aktiverar filter.</p>
                 <button id="syncBtn" class="w-full bg-amber-500 text-slate-900 p-5 rounded-xl text-sm font-black shadow-xl mb-2">Starta Synk ⚡</button>
-                <div id="syncLog" class="text-[10px] text-slate-400 mt-2 h-10 overflow-y-auto font-mono normal-case tracking-normal">Inget kört än...</div>
+                <div id="syncLog" class="text-[10px] text-slate-400 mt-2 h-10 overflow-y-auto font-mono normal-case tracking-normal">Redo...</div>
             </div>
             
-            <button id="closeBtn" class="mt-8 w-full bg-indigo-600 p-4 rounded-xl text-xs text-white uppercase font-black shadow-lg">Visa Hyllan</button>
-            <button onclick="localStorage.clear(); location.reload();" class="mt-4 text-[8px] text-red-600 underline uppercase block w-full">Nollställ allt minne</button>
+            <button id="closeBtn" class="mt-8 w-full bg-indigo-600 p-4 rounded-xl text-xs text-white uppercase font-black shadow-lg">Visa Hyllan →</button>
+            <button onclick="localStorage.clear(); location.reload();" class="mt-4 text-[8px] text-red-600 underline uppercase block w-full">Nollställ allt</button>
         </div>
 
         <div id="filterSection" class="hidden bg-slate-800 p-6 rounded-[2rem] border border-slate-700 mb-6 shadow-xl">
@@ -39,10 +40,11 @@
             </select>
             
             <div class="grid grid-cols-3 gap-2">
-                <button onclick="setFilter('best')" id="btn-best" class="bg-indigo-600 p-4 rounded-xl text-[10px] font-black italic">Bäst</button>
-                <button onclick="setFilter('rec')" id="btn-rec" class="bg-slate-700 p-4 rounded-xl text-[10px] font-black italic">Rek.</button>
-                <button onclick="setFilter('all')" id="btn-all" class="bg-slate-700 p-4 rounded-xl text-[10px] font-black italic">Alla</button>
+                <button onclick="setFilter('best')" id="btn-best" class="bg-indigo-600 p-4 rounded-xl text-[10px] font-black italic shadow-lg border-b-4 border-indigo-900">Bäst</button>
+                <button onclick="setFilter('rec')" id="btn-rec" class="bg-slate-700 p-4 rounded-xl text-[10px] font-black italic shadow-lg">Rek.</button>
+                <button onclick="setFilter('all')" id="btn-all" class="bg-slate-700 p-4 rounded-xl text-[10px] font-black italic shadow-lg">Alla</button>
             </div>
+            <button onclick="document.getElementById('importSection').classList.remove('hidden'); window.scrollTo(0,0);" class="mt-4 text-[8px] text-slate-600 uppercase tracking-widest font-bold">Setup / Synka om ⚙️</button>
         </div>
 
         <div id="gameGrid" class="space-y-4 pb-20"></div>
@@ -50,20 +52,24 @@
 
     <script>
         const PROXY = "https://api.allorigins.win/raw?url=";
-        let myGames = JSON.parse(localStorage.getItem('zebba_v700')) || [];
+        let myGames = JSON.parse(localStorage.getItem('zebba_v800')) || [];
         let filterLevel = 'best';
 
         function init() {
             if (myGames.length > 0) {
+                // Vi visar nu filtret, men låter setup vara kvar så man kan synka
                 document.getElementById('filterSection').classList.remove('hidden');
-                document.getElementById('importSection').classList.add('hidden');
-                document.getElementById('gameCount').innerText = `${myGames.length} Spel sparade`;
+                document.getElementById('gameCount').innerText = `${myGames.length} Spel i hyllan`;
                 render();
+            } else {
+                document.getElementById('gameCount').innerText = "Väntar på setup";
             }
         }
 
         document.getElementById('saveBtn').addEventListener('click', () => {
-            const rawData = document.getElementById('xmlInput').value;
+            const rawData = document.getElementById('xmlInput').value.trim();
+            if (!rawData) return alert("Klistra in XML först!");
+            
             const items = rawData.split('<item').slice(1);
             myGames = items.map(b => ({
                 id: b.match(/objectid="(\d+)"/)?.[1],
@@ -71,16 +77,17 @@
                 img: b.match(/<thumbnail>(.*?)<\/thumbnail>/)?.[1] || '',
                 polls: {}, avg: "0.0"
             })).filter(g => g.id);
-            localStorage.setItem('zebba_v700', JSON.stringify(myGames));
-            alert(`Steg 1 klart! ${myGames.length} spel hittade.`);
-            location.reload();
+            
+            localStorage.setItem('zebba_v800', JSON.stringify(myGames));
+            document.getElementById('syncLog').innerText = `Steg 1 klar! ${myGames.length} spel sparade. Kör synk nu!`;
+            alert("Spel sparade i listan! Nu MÅSTE du trycka på 'Starta Synk' för att ladda rösterna.");
         });
 
         document.getElementById('syncBtn').addEventListener('click', async () => {
             const btn = document.getElementById('syncBtn');
             const log = document.getElementById('syncLog');
             btn.disabled = true;
-            btn.innerText = "SYNKAR...";
+            btn.innerText = "HÄMTAR DATA...";
             
             let cleanedList = [];
             const chunkSize = 15;
@@ -88,21 +95,15 @@
             for (let i = 0; i < myGames.length; i += chunkSize) {
                 const chunk = myGames.slice(i, i + chunkSize);
                 const ids = chunk.map(g => g.id).join(',');
-                log.innerHTML = `<span class="text-amber-500 italic">Hämtar grupp ${i/chunkSize + 1}...</span>`;
+                log.innerHTML = `<span class="text-amber-500 font-bold italic uppercase">Anropar BGG (Grupp ${Math.floor(i/chunkSize) + 1})...</span>`;
 
                 try {
                     const res = await fetch(PROXY + encodeURIComponent(`https://boardgamegeek.com/xmlapi2/thing?id=${ids}&stats=1`));
                     const text = await res.text();
-                    
-                    if (!text.includes('<item')) {
-                        log.innerHTML = `<span class="text-red-500">BGG svarade tomt. Väntar 2 sek...</span>`;
-                        await new Promise(r => setTimeout(r, 2000));
-                        i -= chunkSize; // Försök igen
-                        continue;
-                    }
-
                     const xml = new DOMParser().parseFromString(text, "text/xml");
+                    
                     xml.querySelectorAll('item').forEach(item => {
+                        // Sortera bort expansioner här
                         if (item.getAttribute('type') === 'boardgameexpansion') return;
 
                         const id = item.getAttribute('id');
@@ -123,31 +124,36 @@
                             cleanedList.push(game);
                         }
                     });
-                    log.innerHTML = `<span class="text-emerald-500">Klar med ${cleanedList.length} spel...</span>`;
-                    localStorage.setItem('zebba_v700', JSON.stringify(cleanedList));
+                    log.innerHTML = `<span class="text-emerald-500 font-bold uppercase">Sparat ${cleanedList.length} brädspel hittills...</span>`;
+                    localStorage.setItem('zebba_v800', JSON.stringify(cleanedList));
                 } catch (e) { 
-                    log.innerHTML = `<span class="text-red-500">Fel: ${e.message}</span>`;
+                    log.innerHTML = `<span class="text-red-500">Fel: Försök igen!</span>`;
                 }
                 await new Promise(r => setTimeout(r, 600));
             }
 
             myGames = cleanedList;
-            localStorage.setItem('zebba_v700', JSON.stringify(myGames));
-            btn.innerText = "KLART ✅";
-            document.getElementById('gameCount').innerText = `${myGames.length} Spel (Expansioner borttagna)`;
+            localStorage.setItem('zebba_v800', JSON.stringify(myGames));
+            btn.innerText = "SYNKA KLAR ✅";
+            btn.classList.add('bg-emerald-500');
+            document.getElementById('gameCount').innerText = `${myGames.length} Spel (No Expansions)`;
             render();
+            alert("Synk genomförd! Tryck på 'Visa Hyllan' för att se resultatet.");
         });
 
         document.getElementById('closeBtn').addEventListener('click', () => {
+            if (myGames.length === 0) return alert("Du måste spara spel först!");
             document.getElementById('importSection').classList.add('hidden');
             document.getElementById('filterSection').classList.remove('hidden');
-            render();
+            window.scrollTo(0,0);
         });
 
         function setFilter(level) {
             filterLevel = level;
             ['best', 'rec', 'all'].forEach(l => {
-                document.getElementById('btn-' + l).className = (l === level ? "bg-indigo-600 p-4 rounded-xl text-[10px] font-black italic shadow-lg" : "bg-slate-700 p-4 rounded-xl text-[10px] font-black italic");
+                document.getElementById('btn-' + l).className = (l === level ? 
+                    "bg-indigo-600 p-4 rounded-xl text-[10px] font-black italic shadow-lg border-b-4 border-indigo-900" : 
+                    "bg-slate-700 p-4 rounded-xl text-[10px] font-black italic shadow-lg");
             });
             render();
         }
@@ -167,23 +173,23 @@
 
             grid.innerHTML = filtered.map(g => {
                 const s = g.polls[count] || g.polls[count+"+"] || g.polls[count + " "];
-                const badge = s === 'best' ? '<span class="bg-emerald-500 text-[8px] px-2 py-1 rounded text-white font-black italic">BÄST</span>' : 
-                             (s === 'rec' ? '<span class="bg-indigo-600 text-[8px] px-2 py-1 rounded text-white font-black italic text-slate-100">REK</span>' : '');
+                const badge = s === 'best' ? '<span class="bg-emerald-500 text-[8px] px-2 py-1 rounded text-white font-black italic shadow-sm">BÄST</span>' : 
+                             (s === 'rec' ? '<span class="bg-indigo-600 text-[8px] px-2 py-1 rounded text-white font-black italic shadow-sm">REK</span>' : '');
                 return `
                 <div class="bg-slate-800 p-5 rounded-[2rem] flex items-center gap-5 border border-slate-700 shadow-xl">
-                    <img src="${g.img}" class="w-16 h-16 object-cover rounded-2xl bg-slate-900">
+                    <img src="${g.img}" class="w-16 h-16 object-cover rounded-2xl bg-slate-900 shadow-inner">
                     <div class="flex-grow min-w-0 text-left">
-                        <div class="flex items-center justify-between gap-2">
-                            <h3 class="font-black text-slate-100 text-[12px] uppercase truncate italic">${g.title}</h3>
+                        <div class="flex items-center justify-between gap-2 mb-1">
+                            <h3 class="font-black text-slate-100 text-[12px] uppercase truncate italic leading-tight">${g.title}</h3>
                             ${badge}
                         </div>
-                        <p class="text-[10px] text-indigo-400 font-black italic mt-1">BGG: ${g.avg}</p>
+                        <p class="text-[10px] text-indigo-400 font-black italic tracking-widest uppercase opacity-80">BGG: ${g.avg}</p>
                     </div>
                 </div>`;
             }).join('');
 
             if (filtered.length === 0) {
-                grid.innerHTML = `<div class="py-20 text-slate-500 text-xs uppercase font-black italic">Hittade inga spel med detta filter.<br>Kolla loggen i inställningar.</div>`;
+                grid.innerHTML = `<div class="py-20 text-slate-600 text-[10px] font-black uppercase italic tracking-widest leading-loose text-center">Inget matchar filtret.<br>Har du kört synken?</div>`;
             }
         }
 
