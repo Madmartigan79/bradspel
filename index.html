@@ -3,33 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mattias Spelhylla</title>
+    <title>Zebbas Spel</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-900 text-white min-h-screen font-sans">
-    <div class="max-w-md mx-auto px-6 py-12">
-        <h1 class="text-4xl font-black text-center mb-8 tracking-tighter italic uppercase text-indigo-400">Zebbas Games</h1>
-        
-        <div class="bg-slate-800 p-6 rounded-3xl shadow-2xl border border-slate-700">
-            <label class="block text-[10px] font-bold uppercase text-slate-400 mb-4 text-center tracking-widest">Antal spelare</label>
-            <select id="playerCount" class="w-full bg-slate-900 border-2 border-slate-700 rounded-2xl p-4 font-bold text-center text-2xl outline-none focus:border-indigo-500 mb-6">
-                <option value="1">1 Person</option>
-                <option value="2" selected>2 Personer</option>
-                <option value="3">3 Personer</option>
-                <option value="4">4 Personer</option>
-                <option value="5">5 Personer</option>
-                <option value="6">6+</option>
-            </select>
-            <button id="fetchBtn" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white py-5 rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">Hitta Spel</button>
-        </div>
+<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col items-center py-10 px-4">
+    
+    <h1 class="text-3xl font-black italic uppercase text-indigo-500 mb-8 tracking-tighter">Mattias lir</h1>
 
-        <div id="status" class="text-center mt-8 text-slate-400 font-medium italic">Välj antal och tryck på knappen</div>
-        
-        <div id="gameGrid" class="mt-10 space-y-4"></div>
+    <div class="w-full max-w-sm bg-gray-800 p-6 rounded-3xl shadow-2xl border border-gray-700">
+        <select id="playerCount" class="w-full bg-gray-900 border-2 border-gray-700 rounded-2xl p-4 font-bold text-center text-xl mb-4 focus:border-indigo-500 outline-none">
+            <option value="1">1 Spelare</option>
+            <option value="2" selected>2 Spelare</option>
+            <option value="3">3 Spelare</option>
+            <option value="4">4 Spelare</option>
+            <option value="5">5 Spelare</option>
+            <option value="6">6+ Spelare</option>
+        </select>
+        <button id="fetchBtn" class="w-full bg-indigo-600 hover:bg-indigo-500 py-4 rounded-2xl font-black uppercase tracking-widest transition-all">Sök i samlingen</button>
     </div>
+
+    <div id="status" class="mt-6 text-sm text-gray-400 text-center max-w-xs leading-relaxed"></div>
+    
+    <div id="gameGrid" class="mt-8 w-full max-w-md space-y-3"></div>
 
     <script>
         const USERNAME = 'zebbas';
+        
+        // Vi testar en annan proxy-metod som är mer "aggressiv"
+        const PROXY = "https://corsproxy.io/?";
 
         document.getElementById('fetchBtn').addEventListener('click', async () => {
             const count = parseInt(document.getElementById('playerCount').value);
@@ -39,57 +40,57 @@
 
             grid.innerHTML = "";
             btn.disabled = true;
-            status.innerText = "Anropar BGG...";
+            status.innerHTML = "Hämtar data...<br>(Om detta tar mer än 10 sek, har BGG låst sig)";
 
-            // Vi använder en annan publik proxy som ofta är piggare
-            const url = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://boardgamegeek.com/xmlapi2/collection?username=${USERNAME}&own=1&excludesubtype=boardgameexpansion&stats=1`)}`;
-
+            const bggUrl = `https://boardgamegeek.com/xmlapi2/collection?username=${USERNAME}&own=1&excludesubtype=boardgameexpansion&stats=1`;
+            
             try {
-                const response = await fetch(url);
-                const data = await response.json();
-                const parser = new DOMParser();
-                const xml = parser.parseFromString(data.contents, "text/xml");
+                const response = await fetch(PROXY + encodeURIComponent(bggUrl));
+                
+                if (!response.ok) throw new Error();
 
-                if (xml.querySelector('message')) {
-                    status.innerText = "BGG håller på att ladda din lista. Vänta 15 sekunder och prova igen.";
+                const text = await response.text();
+                
+                if (text.includes('message')) {
+                    status.innerHTML = "BGG förbereder listan. <br><br> <a href='" + bggUrl + "' target='_blank' class='text-indigo-400 underline font-bold'>KLICKA HÄR FÖR ATT VÄCKA BGG</a><br><br>Kom sen tillbaka hit och tryck på knappen igen.";
                     btn.disabled = false;
                     return;
                 }
 
+                const xml = new DOMParser().parseFromString(text, "text/xml");
                 const items = Array.from(xml.querySelectorAll('item'));
+
                 if (items.length === 0) {
-                    status.innerText = "Kunde inte hitta några spel just nu. BGG är överbelastat.";
+                    status.innerText = "Hittade inga spel. Testa igen om en stund.";
                     btn.disabled = false;
                     return;
                 }
 
                 const filtered = items.filter(item => {
-                    const min = parseInt(item.querySelector('stats').getAttribute('minplayers'));
-                    const max = parseInt(item.querySelector('stats').getAttribute('maxplayers'));
+                    const stats = item.querySelector('stats');
+                    const min = parseInt(stats.getAttribute('minplayers'));
+                    const max = parseInt(stats.getAttribute('maxplayers'));
                     return count >= min && count <= max;
                 }).sort((a, b) => {
-                    const rateA = parseFloat(a.querySelector('stats rating average').getAttribute('value'));
-                    const rateB = parseFloat(b.querySelector('stats rating average').getAttribute('value'));
-                    return rateB - rateA;
+                    const rA = parseFloat(a.querySelector('stats rating average').getAttribute('value'));
+                    const rB = parseFloat(b.querySelector('stats rating average').getAttribute('value'));
+                    return rB - rA;
                 });
 
-                status.innerText = `Hittade ${filtered.length} spel!`;
-                
+                status.innerText = `Visar ${filtered.length} spel för ${count} personer:`;
+
                 grid.innerHTML = filtered.map(game => `
-                    <div class="bg-slate-800 border border-slate-700 p-4 rounded-2xl flex items-center gap-4 shadow-lg">
-                        <img src="${game.querySelector('thumbnail')?.textContent}" class="w-16 h-16 object-cover rounded-lg bg-slate-700">
+                    <div class="bg-gray-800 p-4 rounded-2xl flex items-center gap-4 border border-gray-700 shadow-lg">
+                        <img src="${game.querySelector('thumbnail')?.textContent}" class="w-14 h-14 object-cover rounded-lg">
                         <div class="flex-grow">
-                            <h3 class="font-bold text-slate-100 leading-tight">${game.querySelector('name').textContent}</h3>
-                            <div class="flex gap-3 mt-1">
-                                <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-tighter">BGG: ${parseFloat(game.querySelector('stats rating average').getAttribute('value')).toFixed(1)}</span>
-                                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">Ditt: ${game.querySelector('stats rating').getAttribute('value') !== 'N/A' ? game.querySelector('stats rating').getAttribute('value') : '-'}</span>
-                            </div>
+                            <h3 class="font-bold text-gray-100 text-sm leading-tight">${game.querySelector('name').textContent}</h3>
+                            <p class="text-[10px] font-bold text-indigo-400 mt-1 uppercase">Betyg: ${parseFloat(game.querySelector('stats rating average').getAttribute('value')).toFixed(1)}</p>
                         </div>
                     </div>
                 `).join('');
 
             } catch (err) {
-                status.innerText = "Något gick fel med anslutningen. Testa igen.";
+                status.innerHTML = "Anslutningen misslyckades. <br><br> Prova att <a href='" + bggUrl + "' target='_blank' class='text-indigo-400 underline font-bold text-lg italic'>ÖPPNA DENNA LÄNK</a>, stäng den fliken, och tryck på sök igen.";
             } finally {
                 btn.disabled = false;
             }
