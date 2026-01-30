@@ -13,21 +13,20 @@
         </header>
 
         <div id="importSection" class="bg-slate-800 p-8 rounded-[2rem] border-4 border-indigo-600 mb-10 shadow-2xl">
-            <h2 class="text-xl mb-4 text-indigo-400 font-black italic underline">1. Importera</h2>
+            <h2 class="text-xl mb-4 text-indigo-400 font-black italic underline">1. Importera Grundlista</h2>
             <textarea id="xmlInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-32 text-[10px] font-mono text-indigo-300 outline-none mb-4" placeholder="Klistra in XML från BGG här..."></textarea>
-            <button id="saveBtn" class="w-full bg-slate-700 p-4 rounded-xl text-xs font-black uppercase mb-8">Spara Spel</button>
+            <button id="saveBtn" class="w-full bg-slate-700 p-4 rounded-xl text-xs font-black uppercase mb-8">Spara Titlar</button>
             
             <div id="syncSection" class="pt-6 border-t border-slate-700 hidden">
-                <h2 class="text-xl mb-4 text-amber-400 italic font-black underline">2. Hämta Betyg & Röster</h2>
-                <p class="text-[10px] normal-case text-slate-400 mb-4 italic">Eftersom BGG blockerar automatiska hämtningar måste vi göra detta manuellt:</p>
+                <h2 class="text-xl mb-4 text-amber-400 italic font-black underline">2. Hämta Röster & Betyg</h2>
+                <p class="text-[10px] normal-case text-slate-400 mb-4 italic">Klicka på båda länkarna och klistra in innehållet här under:</p>
                 
-                <ol class="text-left text-[11px] space-y-4 mb-6 normal-case tracking-normal font-medium">
-                    <li><span class="text-amber-500 font-black">A.</span> <a id="bggLink" href="#" target="_blank" class="underline text-indigo-400 font-bold">Klicka här för att öppna röstningsdata</a></li>
-                    <li><span class="text-amber-500 font-black">B.</span> Tryck <kbd class="bg-slate-900 px-1 rounded">Ctrl+A</kbd> sedan <kbd class="bg-slate-900 px-1 rounded">Ctrl+C</kbd> på sidan som öppnas.</li>
-                    <li><span class="text-amber-500 font-black">C.</span> Klistra in allt här under:</li>
-                </ol>
+                <div class="grid grid-cols-2 gap-2 mb-4">
+                    <a id="link1" href="#" target="_blank" class="bg-indigo-600 p-3 rounded-xl text-[10px] font-bold text-white shadow-lg">Öppna Del 1</a>
+                    <a id="link2" href="#" target="_blank" class="bg-indigo-600 p-3 rounded-xl text-[10px] font-bold text-white shadow-lg">Öppna Del 2</a>
+                </div>
 
-                <textarea id="syncInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-32 text-[10px] font-mono text-emerald-300 outline-none mb-4" placeholder="Klistra in röstningsdatan här..."></textarea>
+                <textarea id="syncInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-48 text-[10px] font-mono text-emerald-300 outline-none mb-4" placeholder="Klistra in ALLT från Del 1, sedan ALLT från Del 2 här..."></textarea>
                 <button id="finishBtn" class="w-full bg-emerald-600 text-white p-5 rounded-xl text-sm font-black shadow-xl">Aktivera Filter ✅</button>
             </div>
             
@@ -54,18 +53,18 @@
     </div>
 
     <script>
-        let myGames = JSON.parse(localStorage.getItem('zebba_manual_v1')) || [];
+        let myGames = JSON.parse(localStorage.getItem('zebba_vFinal_Manual')) || [];
         let filterLevel = 'best';
 
         function init() {
             if (myGames.length > 0) {
-                const hasData = myGames.some(g => Object.keys(g.polls).length > 0);
+                const hasData = myGames.some(g => Object.keys(g.polls || {}).length > 0);
                 if (hasData) {
                     document.getElementById('importSection').classList.add('hidden');
                     document.getElementById('filterSection').classList.remove('hidden');
                     render();
                 } else {
-                    prepareSyncLink();
+                    prepareLinks();
                     document.getElementById('syncSection').classList.remove('hidden');
                 }
             }
@@ -80,21 +79,25 @@
                 img: b.match(/<thumbnail>(.*?)<\/thumbnail>/)?.[1] || '',
                 polls: {}, avg: "0.0"
             })).filter(g => g.id);
-            localStorage.setItem('zebba_manual_v1', JSON.stringify(myGames));
+            localStorage.setItem('zebba_vFinal_Manual', JSON.stringify(myGames));
             location.reload();
         });
 
-        function prepareSyncLink() {
-            const ids = myGames.map(g => g.id).join(',');
-            document.getElementById('bggLink').href = `https://boardgamegeek.com/xmlapi2/thing?id=${ids}&stats=1`;
+        function prepareLinks() {
+            const mid = Math.ceil(myGames.length / 2);
+            const part1 = myGames.slice(0, mid).map(g => g.id).join(',');
+            const part2 = myGames.slice(mid).map(g => g.id).join(',');
+            
+            document.getElementById('link1').href = `https://boardgamegeek.com/xmlapi2/thing?id=${part1}&stats=1`;
+            document.getElementById('link2').href = `https://boardgamegeek.com/xmlapi2/thing?id=${part2}&stats=1`;
         }
 
         document.getElementById('finishBtn').addEventListener('click', () => {
             const data = document.getElementById('syncInput').value.trim();
-            if (!data) return alert("Klistra in koden från länken först!");
+            if (!data) return alert("Klistra in koden från länkarna först!");
 
             const blocks = data.split('<item').slice(1);
-            let finalGames = [];
+            let updatedGames = [];
 
             blocks.forEach(block => {
                 if (block.includes('type="boardgameexpansion"')) return;
@@ -118,13 +121,13 @@
                         });
                     }
                     game.polls = polls;
-                    finalGames.push(game);
+                    updatedGames.push(game);
                 }
             });
 
-            myGames = finalGames;
-            localStorage.setItem('zebba_manual_v1', JSON.stringify(myGames));
-            alert("KLART! Nu fungerar filtren.");
+            myGames = updatedGames;
+            localStorage.setItem('zebba_vFinal_Manual', JSON.stringify(myGames));
+            alert(`Succé! ${myGames.length} brädspel aktiverade.`);
             location.reload();
         });
 
@@ -148,7 +151,7 @@
             grid.innerHTML = data.map(g => {
                 const s = g.polls[count] || g.polls[count+"+"];
                 const badge = s === 'best' ? '<span class="bg-emerald-500 text-[8px] px-2 py-1 rounded text-white font-black italic shadow-sm">BÄST</span>' : 
-                             (s === 'rec' ? '<span class="bg-indigo-600 text-[8px] px-2 py-1 rounded text-white font-black italic shadow-sm">REK</span>' : '');
+                             (s === 'rec' ? '<span class="bg-indigo-600 text-[8px] px-2 py-1 rounded text-white font-black italic shadow-sm text-slate-100">REK</span>' : '');
                 return `
                 <div class="bg-slate-800 p-5 rounded-[2rem] flex items-center gap-5 border border-slate-700 shadow-xl">
                     <img src="${g.img}" class="w-16 h-16 object-cover rounded-2xl bg-slate-900 shadow-inner">
