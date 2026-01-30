@@ -13,14 +13,22 @@
         </header>
 
         <div id="importSection" class="bg-slate-800 p-8 rounded-[2rem] border-4 border-indigo-600 mb-10 shadow-2xl">
-            <h2 class="text-xl mb-4 text-indigo-400 font-black italic">Setup</h2>
-            <p class="text-[10px] normal-case text-slate-400 mb-4 italic">Klistra in koden från din BGG-länk nedan:</p>
+            <h2 class="text-xl mb-4 text-indigo-400 font-black italic underline">1. Importera</h2>
+            <textarea id="xmlInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-32 text-[10px] font-mono text-indigo-300 outline-none mb-4" placeholder="Klistra in XML från din collection-länk här..."></textarea>
+            <button id="saveBtn" class="w-full bg-slate-700 p-4 rounded-xl text-xs font-black uppercase mb-8">Spara Titlar</button>
             
-            <textarea id="xmlInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-64 text-[10px] font-mono text-indigo-300 outline-none mb-6" placeholder="Klistra in XML här..."></textarea>
+            <div id="syncSection" class="pt-6 border-t border-slate-700 hidden">
+                <h2 class="text-xl mb-4 text-amber-400 italic font-black underline">2. Aktivera Bäst/Rek</h2>
+                <p class="text-[10px] normal-case text-slate-400 mb-4 italic">BGG kräver manuell hämtning. Klicka på länkarna nedan, kopiera innehållet och klistra in det här.</p>
+                
+                <div id="linkGrid" class="grid grid-cols-4 gap-1 mb-6">
+                    </div>
+
+                <textarea id="syncInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-48 text-[10px] font-mono text-emerald-300 outline-none mb-4" placeholder="Klistra in ALLT från länkarna här..."></textarea>
+                <button id="finishBtn" class="w-full bg-emerald-600 text-white p-5 rounded-xl text-sm font-black shadow-xl">Aktivera Filter ✅</button>
+            </div>
             
-            <button id="fullPowerBtn" class="w-full bg-emerald-600 text-white p-5 rounded-xl text-sm font-black shadow-xl hover:bg-emerald-500 transition-all uppercase">Aktivera Spelhyllan ⚡</button>
-            
-            <button onclick="localStorage.clear(); location.reload();" class="mt-8 text-[8px] text-red-500 underline uppercase block w-full opacity-50">Nollställ Allt</button>
+            <button onclick="localStorage.clear(); location.reload();" class="mt-10 text-[8px] text-red-500 underline uppercase block w-full opacity-50">Nollställ Allt</button>
         </div>
 
         <div id="filterSection" class="hidden bg-slate-800 p-6 rounded-[2rem] border border-slate-700 mb-6 shadow-xl text-center">
@@ -37,70 +45,91 @@
                 <button onclick="setFilter('rec')" id="btn-rec" class="bg-slate-700 p-4 rounded-xl text-[10px] font-black italic shadow-lg">Rek.</button>
                 <button onclick="setFilter('all')" id="btn-all" class="bg-slate-700 p-4 rounded-xl text-[10px] font-black italic shadow-lg">Alla</button>
             </div>
-            <button onclick="document.getElementById('importSection').classList.remove('hidden');" class="mt-4 text-[8px] text-slate-600 uppercase tracking-widest font-bold">Inställningar ⚙️</button>
         </div>
 
         <div id="gameGrid" class="space-y-4 pb-20"></div>
     </div>
 
     <script>
-        let myGames = JSON.parse(localStorage.getItem('zebba_allinone_v1')) || [];
+        let myGames = JSON.parse(localStorage.getItem('zebba_manual_fix_v2')) || [];
         let filterLevel = 'best';
 
         function init() {
             if (myGames.length > 0) {
-                document.getElementById('importSection').classList.add('hidden');
-                document.getElementById('filterSection').classList.remove('hidden');
-                render();
+                const hasData = myGames.some(g => Object.keys(g.polls || {}).length > 0);
+                if (hasData) {
+                    document.getElementById('importSection').classList.add('hidden');
+                    document.getElementById('filterSection').classList.remove('hidden');
+                    render();
+                } else {
+                    prepareManualLinks();
+                    document.getElementById('syncSection').classList.remove('hidden');
+                }
             }
         }
 
-        document.getElementById('fullPowerBtn').addEventListener('click', () => {
-            const data = document.getElementById('xmlInput').value.trim();
-            if (!data) return alert("Klistra in koden först!");
+        document.getElementById('saveBtn').addEventListener('click', () => {
+            const rawData = document.getElementById('xmlInput').value.trim();
+            const items = rawData.split('<item').slice(1);
+            myGames = items.map(b => ({
+                id: b.match(/objectid="(\d+)"/)?.[1],
+                title: (b.match(/<name[^>]*>(.*?)<\/name>/)?.[1] || "Okänt").replace('<![CDATA[', '').replace(']]>', ''),
+                img: b.match(/<thumbnail>(.*?)<\/thumbnail>/)?.[1] || '',
+                polls: {}, avg: "0.0"
+            })).filter(g => g.id);
+            localStorage.setItem('zebba_manual_fix_v2', JSON.stringify(myGames));
+            location.reload();
+        });
 
-            const blocks = data.split('<item ').slice(1);
-            let games = [];
+        function prepareManualLinks() {
+            const container = document.getElementById('linkGrid');
+            const chunkSize = 15;
+            for (let i = 0; i < myGames.length; i += chunkSize) {
+                const chunk = myGames.slice(i, i + chunkSize);
+                const ids = chunk.map(g => g.id).join(',');
+                const a = document.createElement('a');
+                a.href = `https://boardgamegeek.com/xmlapi2/thing?id=${ids}&stats=1`;
+                a.target = "_blank";
+                a.className = "bg-indigo-600 p-2 rounded text-[9px] font-bold text-white hover:bg-indigo-500 transition-colors";
+                a.innerText = `DEL ${Math.floor(i/chunkSize) + 1}`;
+                container.appendChild(a);
+            }
+        }
 
+        document.getElementById('finishBtn').addEventListener('click', () => {
+            const data = document.getElementById('syncInput').value.trim();
+            const blocks = data.split('<item').slice(1);
+            
             blocks.forEach(block => {
-                // Vi struntar i expansion-taggen för nu för att vara säkra på att allt kommer med
-                const id = block.match(/objectid="(\d+)"/)?.[1];
-                const title = (block.match(/<name[^>]*>(.*?)<\/name>/)?.[1] || "Okänt").replace('<![CDATA[', '').replace(']]>', '');
-                const img = block.match(/<thumbnail>(.*?)<\/thumbnail>/)?.[1] || '';
-                const avg = block.match(/<average value="([\d.]+)"/)?.[1] || "0.0";
-                
-                const polls = {};
-                // BGG Collection XML gömmer rösterna i "suggested_numplayers"-sektionen om du har stats=1
-                const pollMatch = block.match(/<poll name="suggested_numplayers"[\s\S]*?<\/poll>/);
-                if (pollMatch) {
-                    const resultsBlocks = pollMatch[0].match(/<results numplayers="(\d+\+?)">[\s\S]*?<\/results>/g);
-                    if (resultsBlocks) {
-                        resultsBlocks.forEach(rb => {
-                            const n = rb.match(/numplayers="(\d+\+?)"/)[1];
-                            const best = parseInt(rb.match(/value="Best" numvotes="(\d+)"/)?.[1] || 0);
-                            const rec = parseInt(rb.match(/value="Recommended" numvotes="(\d+)"/)?.[1] || 0);
-                            const not = parseInt(rb.match(/value="Not Recommended" numvotes="(\d+)"/)?.[1] || 0);
-                            
-                            if (best > 0 && best >= rec && best > not) polls[n] = "best";
-                            else if ((best + rec) > not) polls[n] = "rec";
+                const id = block.match(/id="(\d+)"/)?.[1];
+                const game = myGames.find(g => g.id === id);
+                if (game) {
+                    const avg = block.match(/<average value="([\d.]+)"/);
+                    game.avg = avg ? parseFloat(avg[1]).toFixed(1) : "0.0";
+                    const polls = {};
+                    const resSets = block.match(/<results numplayers="(\d+\+?)">[\s\S]*?<\/results>/g);
+                    if (resSets) {
+                        resSets.forEach(rs => {
+                            const n = rs.match(/numplayers="(\d+\+?)"/)[1];
+                            const b = parseInt(rs.match(/value="Best" numvotes="(\d+)"/)?.[1] || 0);
+                            const r = parseInt(rs.match(/value="Recommended" numvotes="(\d+)"/)?.[1] || 0);
+                            const x = parseInt(rs.match(/value="Not Recommended" numvotes="(\d+)"/)?.[1] || 0);
+                            if (b > 0 && b >= r && b > x) polls[n] = "best";
+                            else if ((b + r) > x) polls[n] = "rec";
                         });
                     }
+                    game.polls = polls;
                 }
-
-                games.push({ id, title, img, avg, polls });
             });
 
-            myGames = games;
-            localStorage.setItem('zebba_allinone_v1', JSON.stringify(myGames));
-            document.getElementById('importSection').classList.add('hidden');
-            document.getElementById('filterSection').classList.remove('hidden');
-            render();
+            localStorage.setItem('zebba_manual_fix_v2', JSON.stringify(myGames));
+            location.reload();
         });
 
         function setFilter(level) {
             filterLevel = level;
             ['best', 'rec', 'all'].forEach(l => {
-                document.getElementById('btn-' + l).className = (l === level ? "bg-indigo-600 p-4 rounded-xl text-[10px] font-black italic border-b-4 border-indigo-900 shadow-lg" : "bg-slate-700 p-4 rounded-xl text-[10px] font-black italic shadow-lg");
+                document.getElementById('btn-' + l).className = (l === level ? "bg-indigo-600 p-4 rounded-xl text-[10px] font-black italic border-b-4 border-indigo-900" : "bg-slate-700 p-4 rounded-xl text-[10px] font-black italic");
             });
             render();
         }
@@ -108,19 +137,16 @@
         function render() {
             const count = document.getElementById('playerCount').value;
             const grid = document.getElementById('gameGrid');
-            
-            let filtered = myGames.filter(g => {
+            const data = myGames.filter(g => {
                 if (filterLevel === 'all') return true;
                 const s = g.polls[count] || g.polls[count+"+"];
                 return filterLevel === 'best' ? s === 'best' : (s === 'best' || s === 'rec');
-            });
+            }).sort((a,b) => b.avg - a.avg);
 
-            filtered.sort((a,b) => b.avg - a.avg);
-
-            grid.innerHTML = filtered.map(g => {
+            grid.innerHTML = data.map(g => {
                 const s = g.polls[count] || g.polls[count+"+"];
-                const badge = s === 'best' ? '<span class="bg-emerald-500 text-[8px] px-2 py-1 rounded text-white font-black italic">BÄST</span>' : 
-                             (s === 'rec' ? '<span class="bg-indigo-600 text-[8px] px-2 py-1 rounded text-white font-black italic">REK</span>' : '');
+                const badge = s === 'best' ? '<span class="bg-emerald-500 text-[8px] px-2 py-1 rounded text-white font-black italic shadow-sm">BÄST</span>' : 
+                             (s === 'rec' ? '<span class="bg-indigo-600 text-[8px] px-2 py-1 rounded text-white font-black italic shadow-sm">REK</span>' : '');
                 return `
                 <div class="bg-slate-800 p-5 rounded-[2rem] flex items-center gap-5 border border-slate-700 shadow-xl">
                     <img src="${g.img}" class="w-16 h-16 object-cover rounded-2xl bg-slate-900 shadow-inner">
@@ -133,10 +159,6 @@
                     </div>
                 </div>`;
             }).join('');
-
-            if (filtered.length === 0) {
-                grid.innerHTML = `<div class="py-20 text-slate-500 text-xs uppercase">Inga spel hittades med filter: ${filterLevel}</div>`;
-            }
         }
         init();
     </script>
