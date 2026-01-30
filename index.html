@@ -24,20 +24,23 @@
                     <option value="5">5 Personer</option>
                     <option value="6">6+ Personer</option>
                 </select>
-                <button id="updateBtn" class="text-[10px] text-slate-500 hover:text-indigo-400 uppercase font-bold transition-colors">Uppdatera samling ⚙️</button>
+                <button id="updateBtn" class="text-[10px] text-slate-500 hover:text-indigo-400 uppercase font-bold transition-colors">Hantera Samling ⚙️</button>
             </div>
         </div>
 
         <div id="importSection" class="bg-slate-800 p-6 rounded-[2rem] shadow-2xl border border-slate-700">
             <h2 class="text-xl font-bold mb-4 text-center italic">Importera din samling</h2>
-            <p class="text-xs text-slate-400 mb-4 leading-relaxed">
-                1. Klicka på knappen nedan för att öppna din BGG-samling.<br>
-                2. Kopiera ALL text på den sidan (Ctrl+A, Ctrl+C).<br>
-                3. Klistra in texten här och tryck Spara.
-            </p>
-            <a href="https://boardgamegeek.com/xmlapi2/collection?username=zebbas&own=1&stats=1" target="_blank" class="block text-center bg-slate-700 p-3 rounded-xl mb-4 text-sm font-bold hover:bg-slate-600">1. Öppna BGG-data</a>
-            <textarea id="xmlInput" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 h-32 text-xs mb-4 outline-none focus:border-indigo-500" placeholder="Klistra in XML-koden här..."></textarea>
-            <button id="saveBtn" class="w-full bg-indigo-600 hover:bg-indigo-500 py-4 rounded-xl font-black uppercase tracking-widest transition-all">Spara samling</button>
+            <div class="space-y-4 mb-6">
+                <a href="https://boardgamegeek.com/xmlapi2/collection?username=zebbas&own=1&stats=1" target="_blank" class="block text-center bg-indigo-600 p-4 rounded-xl font-bold hover:bg-indigo-500 transition-all shadow-lg">
+                    1. Öppna din BGG-data
+                </a>
+                <p class="text-[10px] text-slate-400 leading-relaxed text-center italic uppercase">
+                    Kopiera allt på sidan (Ctrl+A), klistra in här under och spara.
+                </p>
+            </div>
+            <textarea id="xmlInput" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 h-40 text-[10px] font-mono mb-4 outline-none focus:border-indigo-500" placeholder="Klistra in koden här..."></textarea>
+            <button id="saveBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 py-4 rounded-xl font-black uppercase tracking-widest transition-all">Spara Spel</button>
+            <button id="cancelBtn" class="hidden w-full mt-2 text-[10px] text-slate-500 uppercase font-bold py-2">Avbryt</button>
         </div>
 
         <div id="gameGrid" class="mt-8 space-y-3"></div>
@@ -51,67 +54,100 @@
         const xmlInput = document.getElementById('xmlInput');
         const saveBtn = document.getElementById('saveBtn');
         const updateBtn = document.getElementById('updateBtn');
+        const cancelBtn = document.getElementById('cancelBtn');
 
-        // Ladda sparad data från webbläsaren
         let myGames = JSON.parse(localStorage.getItem('zebbas_collection')) || [];
 
         function init() {
             if (myGames.length > 0) {
                 importSection.classList.add('hidden');
                 filterSection.classList.remove('hidden');
+                cancelBtn.classList.remove('hidden');
                 document.getElementById('gameCount').innerText = `${myGames.length} spel sparade`;
                 render();
             }
         }
 
         saveBtn.addEventListener('click', () => {
-            const rawXml = xmlInput.value;
+            const rawXml = xmlInput.value.trim();
+            if (!rawXml) { alert("Textrutan är tom!"); return; }
+
             const parser = new DOMParser();
             const xml = parser.parseFromString(rawXml, "text/xml");
-            const items = xml.querySelectorAll('item');
-
-            if (items.length === 0) {
-                alert("Kunde inte hitta några spel i texten. Dubbelkolla att du kopierade allt!");
+            
+            // Kolla efter fel i XML-parsningsprocessen
+            const parseError = xml.getElementsByTagName("parsererror");
+            if (parseError.length > 0) {
+                alert("Det verkar vara fel på koden du klistrade in. Se till att du kopierade allt!");
                 return;
             }
 
-            myGames = Array.from(items).map(item => ({
-                title: item.querySelector('name').textContent,
-                img: item.querySelector('thumbnail')?.textContent || '',
-                min: parseInt(item.querySelector('stats').getAttribute('minplayers')),
-                max: parseInt(item.querySelector('stats').getAttribute('maxplayers')),
-                avg: parseFloat(item.querySelector('stats rating average').getAttribute('value')).toFixed(1),
-                my: item.querySelector('stats rating').getAttribute('value')
-            }));
+            const items = xml.querySelectorAll('item');
+            if (items.length === 0) {
+                alert("Hittade inga spelobjekt (<item>) i texten. Dubbelkolla källan!");
+                return;
+            }
 
-            localStorage.setItem('zebbas_collection', JSON.stringify(myGames));
-            location.reload();
+            try {
+                myGames = Array.from(items).map(item => {
+                    // Flexibel namnhantering
+                    const nameTag = item.querySelector('name');
+                    const title = nameTag ? (nameTag.textContent || nameTag.getAttribute('value')) : "Okänt spel";
+                    
+                    const stats = item.querySelector('stats');
+                    return {
+                        title: title,
+                        img: item.querySelector('thumbnail')?.textContent || '',
+                        min: parseInt(stats?.getAttribute('minplayers') || 0),
+                        max: parseInt(stats?.getAttribute('maxplayers') || 0),
+                        avg: parseFloat(item.querySelector('stats rating average')?.getAttribute('value') || 0).toFixed(1),
+                        my: item.querySelector('stats rating')?.getAttribute('value') || 'N/A'
+                    };
+                });
+
+                localStorage.setItem('zebbas_collection', JSON.stringify(myGames));
+                alert(`Succé! ${myGames.length} spel har sparats.`);
+                location.reload();
+            } catch (err) {
+                console.error(err);
+                alert("Ett tekniskt fel uppstod när spelen skulle sparas.");
+            }
         });
 
         updateBtn.addEventListener('click', () => {
-            importSection.classList.remove('hidden');
-            filterSection.classList.add('hidden');
+            importSection.classList.toggle('hidden');
+            xmlInput.value = "";
+        });
+
+        cancelBtn.addEventListener('click', () => {
+            importSection.classList.add('hidden');
         });
 
         playerCountSelect.addEventListener('change', render);
 
         function render() {
             const count = parseInt(playerCountSelect.value);
-            const filtered = myGames.filter(g => count >= g.min && count <= g.max)
-                                    .sort((a,b) => b.avg - a.avg);
+            const filtered = myGames.filter(g => {
+                if (count === 6) return g.max >= 6; // Hantera 6+ spelare
+                return count >= g.min && count <= g.max;
+            }).sort((a,b) => b.avg - a.avg);
 
             gameGrid.innerHTML = filtered.map(game => `
                 <div class="bg-slate-800 p-4 rounded-2xl flex items-center gap-4 border border-slate-700 shadow-lg">
-                    <img src="${game.img}" class="w-14 h-14 object-cover rounded-lg bg-slate-700">
+                    <img src="${game.img}" class="w-14 h-14 object-cover rounded-lg bg-slate-700 shadow-inner" onerror="this.src='https://via.placeholder.com/100?text=?';">
                     <div class="flex-grow">
                         <h3 class="font-bold text-slate-100 text-sm leading-tight">${game.title}</h3>
-                        <div class="flex gap-4 mt-1">
-                            <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-tighter italic font-black text-xs italic">BGG: ${game.avg}</span>
-                            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-tighter italic font-black text-xs italic">Ditt: ${game.my !== 'N/A' ? game.my : '-'}</span>
+                        <div class="flex gap-4 mt-2">
+                            <span class="text-[10px] font-black text-indigo-400 uppercase italic tracking-wider">BGG: ${game.avg}</span>
+                            <span class="text-[10px] font-black text-slate-500 uppercase tracking-wider">Ditt: ${game.my !== 'N/A' && game.my !== '' ? game.my : '-'}</span>
                         </div>
                     </div>
                 </div>
             `).join('');
+
+            if (filtered.length === 0) {
+                gameGrid.innerHTML = `<p class="text-center text-slate-500 mt-10 italic">Inga spel passar för ${count} spelare.</p>`;
+            }
         }
 
         init();
