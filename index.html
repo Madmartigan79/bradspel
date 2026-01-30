@@ -9,13 +9,13 @@
 <body class="bg-slate-900 text-white min-h-screen py-10 px-4 font-sans">
     <div class="max-w-md mx-auto">
         <header class="text-center mb-10">
-            <h1 class="text-4xl font-black text-indigo-500 tracking-tighter uppercase italic">Zebbasss Games</h1>
+            <h1 class="text-4xl font-black text-indigo-500 tracking-tighter uppercase italic">Hur många är vi?</h1>
             <p id="gameCount" class="text-slate-500 text-[10px] font-bold uppercase mt-2 tracking-[0.2em]"></p>
         </header>
 
-        <div id="filterSection" class="hidden bg-slate-800 p-6 rounded-[2rem] shadow-2xl border border-slate-700 mb-6">
-            <label class="block text-[10px] font-bold uppercase text-slate-400 mb-4 text-center tracking-widest">Antal spelare</label>
-            <div class="flex flex-col gap-4">
+        <div id="filterSection" class="hidden bg-slate-800 p-6 rounded-[2rem] shadow-2xl border border-slate-700 mb-6 font-bold uppercase italic">
+            <label class="block text-[10px] font-bold uppercase text-slate-400 mb-4 text-center tracking-widest italic">Antal spelare</label>
+            <div class="flex flex-col gap-4 italic font-black">
                 <select id="playerCount" class="w-full bg-slate-900 border-2 border-slate-700 rounded-2xl p-4 font-bold text-center text-2xl outline-none focus:border-indigo-500 appearance-none">
                     <option value="1">1 Person</option>
                     <option value="2" selected>2 Personer</option>
@@ -28,21 +28,21 @@
             </div>
         </div>
 
-        <div id="importSection" class="bg-slate-800 p-8 rounded-[2rem] shadow-2xl border border-slate-700">
+        <div id="importSection" class="bg-slate-800 p-8 rounded-[2rem] shadow-2xl border border-slate-700 font-bold uppercase italic font-black">
             <h2 class="text-xl font-bold mb-6 text-center italic uppercase tracking-tight">Importera Spel</h2>
-            <div class="space-y-4 mb-8">
-                <a href="https://boardgamegeek.com/xmlapi2/collection?username=zebbas&own=1&stats=1" target="_blank" class="block text-center bg-indigo-600 p-4 rounded-xl font-black uppercase text-sm hover:bg-indigo-500 transition-all shadow-lg active:scale-95">
-                    1. Öppna BGG-Länk
+            <div class="space-y-4 mb-8 italic font-black uppercase tracking-tight">
+                <a href="https://boardgamegeek.com/xmlapi2/collection?username=zebbas&own=1&stats=1&showpyramid=1" target="_blank" class="block text-center bg-indigo-600 p-4 rounded-xl font-black uppercase text-sm hover:bg-indigo-500 transition-all shadow-lg">
+                    1. Öppna BGG-Data
                 </a>
-                <p class="text-[10px] text-slate-400 leading-relaxed text-center italic uppercase font-medium">
-                    Klicka ovan, vänta tills koden laddat, kopiera allt (Ctrl+A) och klistra in här:
+                <p class="text-[10px] text-slate-400 leading-relaxed text-center italic uppercase font-medium italic">
+                    Vänta tills sidan är helt laddad. Den ska vara jättelång! <br>Kopiera allt (Ctrl+A) och klistra in här:
                 </p>
             </div>
             <textarea id="xmlInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-48 text-[10px] font-mono mb-6 outline-none focus:border-indigo-400 transition-colors" placeholder="Klistra in här..."></textarea>
-            <button id="saveBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 py-5 rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg shadow-emerald-900/20 active:scale-95">Spara Samling</button>
+            <button id="saveBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 py-5 rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 italic">Spara Samling</button>
         </div>
 
-        <div id="gameGrid" class="mt-10 space-y-4"></div>
+        <div id="gameGrid" class="mt-10 space-y-4 font-bold uppercase italic font-black italic"></div>
     </div>
 
     <script>
@@ -71,12 +71,10 @@
 
             const parser = new DOMParser();
             const xml = parser.parseFromString(rawData, "text/xml");
-            
-            // Vi försöker hitta <item> oavsett om XML-parsningsfel visas (vissa tecken kan störa)
             const items = xml.querySelectorAll('item');
             
             if (items.length === 0) {
-                alert("Hittade inga spel. Se till att du kopierade HELA sidan från BGG-länken!");
+                alert("Hittade inga spel. Vänta några sekunder på BGG-sidan och ladda om den tills den visar många spel, kopiera sen igen.");
                 return;
             }
 
@@ -85,7 +83,9 @@
                 items.forEach(item => {
                     const name = item.querySelector('name')?.textContent || item.querySelector('name')?.getAttribute('value');
                     const stats = item.querySelector('stats');
-                    
+                    const subtype = item.getAttribute('subtype');
+
+                    // Vi vill bara ha brädspel, inte expansioner (om de smugit sig in)
                     if (name) {
                         games.push({
                             title: name,
@@ -98,15 +98,11 @@
                     }
                 });
 
-                if (games.length > 0) {
-                    localStorage.setItem('zebbas_collection', JSON.stringify(games));
-                    alert(`Succé! Jag hittade och sparade ${games.length} spel.`);
-                    location.reload();
-                } else {
-                    alert("Kunde inte läsa spelen i texten. Kontrollera källan.");
-                }
+                localStorage.setItem('zebbas_collection', JSON.stringify(games));
+                alert(`Succé! Jag hittade ${games.length} spel.`);
+                location.reload();
             } catch (err) {
-                alert("Ett fel uppstod vid bearbetningen.");
+                alert("Ett fel uppstod. Prova att kopiera igen.");
             }
         });
 
@@ -114,7 +110,6 @@
             importSection.classList.remove('hidden');
             filterSection.classList.add('hidden');
             xmlInput.value = "";
-            xmlInput.focus();
         });
 
         playerCountSelect.addEventListener('change', render);
@@ -128,18 +123,16 @@
 
             gameGrid.innerHTML = filtered.map(game => `
                 <div class="bg-slate-800 p-5 rounded-[1.5rem] flex items-center gap-5 border border-slate-700/50 shadow-xl">
-                    <div class="w-16 h-16 flex-shrink-0 bg-slate-900 rounded-xl overflow-hidden shadow-inner">
-                        <img src="${game.img}" class="w-full h-full object-cover opacity-90" onerror="this.style.display='none'">
-                    </div>
+                    <img src="${game.img}" class="w-16 h-16 object-cover rounded-xl bg-slate-900 shadow-inner" onerror="this.src='https://via.placeholder.com/100?text=BoardGame';">
                     <div class="flex-grow">
-                        <h3 class="font-bold text-slate-100 text-[15px] leading-tight mb-2">${game.title}</h3>
+                        <h3 class="font-bold text-slate-100 text-[14px] leading-tight mb-2 italic uppercase">${game.title}</h3>
                         <div class="flex gap-4">
                             <div class="flex flex-col text-[10px] font-black uppercase italic tracking-tighter text-indigo-400">
-                                <span class="text-slate-500 font-bold mb-0.5">BGG Snitt</span>
+                                <span class="text-slate-500 font-bold mb-0.5 italic uppercase">BGG Snitt</span>
                                 ${game.avg}
                             </div>
                             <div class="flex flex-col text-[10px] font-black uppercase italic tracking-tighter text-slate-300">
-                                <span class="text-slate-500 font-bold mb-0.5">Ditt betyg</span>
+                                <span class="text-slate-500 font-bold mb-0.5 italic uppercase">Mitt betyg</span>
                                 ${game.my !== 'N/A' && game.my !== '' ? game.my : '-'}
                             </div>
                         </div>
@@ -148,7 +141,7 @@
             `).join('');
 
             if (filtered.length === 0) {
-                gameGrid.innerHTML = `<div class="text-center py-20 text-slate-500 italic font-medium">Inga spel passar för ${count} personer...</div>`;
+                gameGrid.innerHTML = `<div class="text-center py-20 text-slate-500 italic font-medium italic">Inga spel passar för ${count} personer...</div>`;
             }
         }
 
