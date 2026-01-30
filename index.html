@@ -9,160 +9,277 @@
 <body class="bg-slate-900 text-white min-h-screen py-10 px-4 font-sans italic uppercase font-black tracking-tight text-center">
     <div class="max-w-md mx-auto">
         <header class="mb-10">
-            <h1 class="text-4xl font-black text-indigo-500 tracking-tighter italic uppercase leading-none">Zebbas<br>Games</h1>
+            <h1 class="text-4xl text-indigo-500 tracking-tighter leading-none">Zebbas<br>Games</h1>
+            <p id="statusMsg" class="text-slate-500 text-[10px] mt-4 tracking-widest">System Redo</p>
         </header>
 
-        <div id="setup" class="bg-slate-800 p-8 rounded-[2rem] border-4 border-indigo-600 mb-10 shadow-2xl">
-            <h2 class="text-xl mb-4 text-indigo-400 italic font-black">1. Setup</h2>
-            <textarea id="xmlInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-32 text-[10px] font-mono text-indigo-300 outline-none mb-4" placeholder="Klistra in XML här..."></textarea>
-            <button id="saveBtn" class="w-full bg-slate-700 p-4 rounded-xl text-xs font-black uppercase mb-8">Spara & Starta Synk</button>
+        <div id="setupPanel" class="bg-slate-800 p-6 rounded-[2rem] border-4 border-indigo-600 mb-10 shadow-2xl">
             
-            <div id="syncSection" class="hidden pt-6 border-t border-slate-700">
-                <h2 class="text-xl mb-4 text-amber-400 italic">2. Hämtar röster...</h2>
-                <div class="w-full bg-slate-900 h-4 rounded-full overflow-hidden mb-4 border border-slate-700">
+            <div id="step1">
+                <h2 class="text-xl mb-2 text-indigo-400 underline decoration-2">Steg 1: Grundlista</h2>
+                <p class="text-[9px] text-slate-400 mb-2 normal-case italic">Klistra in din XML från collection-länken här:</p>
+                <textarea id="input1" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 h-24 text-[9px] font-mono text-indigo-300 outline-none mb-3"></textarea>
+                <button onclick="runStep1()" class="w-full bg-slate-700 hover:bg-slate-600 p-3 rounded-xl text-xs shadow-lg transition-colors">Spara Spel</button>
+            </div>
+
+            <div id="step2" class="hidden mt-8 pt-8 border-t border-slate-700">
+                <h2 class="text-xl mb-2 text-amber-400 underline decoration-2">Steg 2: Hämta Data</h2>
+                <p class="text-[9px] text-slate-400 mb-4 normal-case italic">
+                    BGG kräver att vi tar det i småbitar. <br>
+                    1. Klicka på en blå knapp.<br>
+                    2. Kopiera all text på sidan som öppnas (Ctrl+A, Ctrl+C).<br>
+                    3. Klistra in i rutan nedan och tryck "Läs in".
+                </p>
+
+                <div id="batchButtons" class="grid grid-cols-4 gap-2 mb-4"></div>
+
+                <textarea id="input2" class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 h-24 text-[9px] font-mono text-emerald-300 outline-none mb-2" placeholder="Klistra in XML-koden här..."></textarea>
+                <button onclick="runStep2()" class="w-full bg-emerald-600 hover:bg-emerald-500 p-3 rounded-xl text-xs shadow-lg transition-colors mb-4">Läs in data från rutan</button>
+                
+                <div class="w-full bg-slate-900 h-3 rounded-full overflow-hidden">
                     <div id="progressBar" class="w-0 h-full bg-emerald-500 transition-all duration-300"></div>
                 </div>
-                <div id="syncLog" class="text-[10px] text-slate-400 font-mono italic mb-6">Analyserar röstningsdata...</div>
-                <button id="goToShelfBtn" class="hidden w-full bg-emerald-600 text-white p-5 rounded-xl text-sm font-black shadow-xl">KLART! VISA MIN HYLLA →</button>
+                <p id="progressText" class="text-[9px] text-slate-500 mt-1">0% Klart</p>
+
+                <button id="finishBtn" onclick="finishSetup()" class="hidden w-full mt-6 bg-indigo-600 hover:bg-indigo-500 p-4 rounded-xl text-sm shadow-xl animate-bounce">KLART! VISA HYLLAN →</button>
             </div>
-            <button onclick="localStorage.clear(); location.reload();" class="text-[8px] text-red-600 underline uppercase mt-6 block w-full opacity-50">Nollställ Allt</button>
+
+            <button onclick="resetAll()" class="mt-8 text-[8px] text-red-500 underline opacity-60">Nollställ allt</button>
         </div>
 
-        <div id="filters" class="hidden bg-slate-800 p-6 rounded-[2rem] border border-slate-700 mb-6 shadow-xl">
-            <select id="playerCount" class="w-full bg-slate-900 border-2 border-slate-700 rounded-2xl p-4 text-2xl text-center mb-6 outline-none text-indigo-400 italic font-black">
-                <option value="1">1 Person</option>
-                <option value="2" selected>2 Personer</option>
-                <option value="3">3 Personer</option>
-                <option value="4">4 Personer</option>
-                <option value="5">5 Personer</option>
-                <option value="6">6+ Personer</option>
-            </select>
-            <div class="grid grid-cols-3 gap-2">
-                <button onclick="setFilter('best')" id="btn-best" class="bg-indigo-600 p-4 rounded-xl text-[10px] font-black italic border-b-4 border-indigo-900 shadow-lg">Bäst</button>
-                <button onclick="setFilter('rec')" id="btn-rec" class="bg-slate-700 p-4 rounded-xl text-[10px] font-black italic shadow-lg">Rek.</button>
-                <button onclick="setFilter('all')" id="btn-all" class="bg-slate-700 p-4 rounded-xl text-[10px] font-black italic shadow-lg">Alla</button>
+        <div id="mainApp" class="hidden">
+            <div class="bg-slate-800 p-6 rounded-[2rem] border border-slate-700 mb-6 shadow-xl">
+                <select id="playerCount" onchange="render()" class="w-full bg-slate-900 border-2 border-slate-700 rounded-2xl p-4 text-2xl text-center mb-6 outline-none text-indigo-400 font-black">
+                    <option value="1">1 Person</option>
+                    <option value="2" selected>2 Personer</option>
+                    <option value="3">3 Personer</option>
+                    <option value="4">4 Personer</option>
+                    <option value="5">5 Personer</option>
+                    <option value="6">6+ Personer</option>
+                </select>
+                <div class="grid grid-cols-3 gap-2">
+                    <button onclick="setFilter('best')" id="btn-best" class="filter-btn bg-indigo-600">Bäst</button>
+                    <button onclick="setFilter('rec')" id="btn-rec" class="filter-btn bg-slate-700">Rek.</button>
+                    <button onclick="setFilter('all')" id="btn-all" class="filter-btn bg-slate-700">Alla</button>
+                </div>
+                <button onclick="document.getElementById('setupPanel').classList.remove('hidden'); document.getElementById('mainApp').classList.add('hidden');" class="mt-4 text-[8px] text-slate-500 font-bold">⚙️ Inställningar</button>
             </div>
-            <button onclick="document.getElementById('setup').classList.remove('hidden');" class="mt-4 text-[8px] text-slate-600 uppercase tracking-widest font-bold">Ändra Setup ⚙️</button>
+            <div id="gameGrid" class="space-y-4 pb-20"></div>
         </div>
-
-        <div id="gameGrid" class="space-y-4 pb-20"></div>
     </div>
 
     <script>
-        const PROXY = "https://images" + Math.floor(Math.random() * 3 + 1) + "-focus-opensocial.googleusercontent.com/gadgets/proxy?container=focus&refresh=600&url=";
-        let myGames = JSON.parse(localStorage.getItem('zebba_final_v200')) || [];
-        let filterLevel = 'best';
+        // --- DATA & STATE ---
+        let db = JSON.parse(localStorage.getItem('zebba_db_v1')) || [];
+        let filter = 'best';
 
+        // --- INIT ---
         function init() {
-            if (myGames.length > 0 && myGames.some(g => Object.keys(g.polls).length > 0)) {
-                document.getElementById('setup').classList.add('hidden');
-                document.getElementById('filters').classList.remove('hidden');
-                render();
+            // Om vi har data och minst ett spel har "polls", visa appen direkt
+            if (db.length > 0 && db.some(g => g.polls && Object.keys(g.polls).length > 0)) {
+                showApp();
+            } else if (db.length > 0) {
+                // Vi har spel men ingen röstdata, visa steg 2
+                document.getElementById('step1').classList.add('hidden');
+                document.getElementById('step2').classList.remove('hidden');
+                generateBatchButtons();
+                updateProgress();
             }
         }
 
-        document.getElementById('saveBtn').addEventListener('click', async () => {
-            const rawData = document.getElementById('xmlInput').value.trim();
-            if(!rawData) return;
+        // --- STEG 1: GRUNDLISTA ---
+        function runStep1() {
+            const txt = document.getElementById('input1').value;
+            if (!txt.includes('<item')) return alert('Ingen XML hittad!');
+
+            // Enkel parsing av collection
+            const items = txt.split('<item ').slice(1);
+            db = items.map(chunk => {
+                const id = chunk.match(/objectid="(\d+)"/)?.[1];
+                const titleMatch = chunk.match(/<name[^>]*>(.*?)<\/name>/);
+                const title = titleMatch ? titleMatch[1].replace('<![CDATA[', '').replace(']]>', '') : "Okänt spel";
+                const imgMatch = chunk.match(/<thumbnail>(.*?)<\/thumbnail>/);
+                const img = imgMatch ? imgMatch[1] : '';
+
+                return {
+                    id: id,
+                    title: title,
+                    img: img,
+                    avg: "0.0",
+                    polls: {}, // Tomt objekt för röstdata
+                    hasData: false // Flagga för att veta om vi hämtat data
+                };
+            }).filter(g => g.id);
+
+            localStorage.setItem('zebba_db_v1', JSON.stringify(db));
             
-            const items = rawData.split('<item').slice(1);
-            myGames = items.map(b => ({
-                id: b.match(/objectid="(\d+)"/)?.[1],
-                title: (b.match(/<name[^>]*>(.*?)<\/name>/)?.[1] || "Okänt").replace('<![CDATA[', '').replace(']]>', ''),
-                img: b.match(/<thumbnail>(.*?)<\/thumbnail>/)?.[1] || '',
-                polls: {},
-                avg: b.match(/<average value="([\d.]+)"/)?.[1] || "0.0"
-            })).filter(g => g.id);
+            document.getElementById('step1').classList.add('hidden');
+            document.getElementById('step2').classList.remove('hidden');
+            generateBatchButtons();
+            updateProgress();
+        }
 
-            document.getElementById('syncSection').classList.remove('hidden');
-            document.getElementById('saveBtn').classList.add('hidden');
+        // --- STEG 2: BATCH-HANTERING ---
+        function generateBatchButtons() {
+            const container = document.getElementById('batchButtons');
+            container.innerHTML = '';
             
-            const chunkSize = 15;
-            const log = document.getElementById('syncLog');
-            const bar = document.getElementById('progressBar');
+            // Vi tar 20 spel per länk för att undvika 414-fel (URL too long)
+            const batchSize = 20; 
+            const totalBatches = Math.ceil(db.length / batchSize);
 
-            for (let i = 0; i < myGames.length; i += chunkSize) {
-                const chunk = myGames.slice(i, i + chunkSize);
-                const ids = chunk.map(g => g.id).join(',');
-                log.innerText = `Läser röstdata för ${Math.min(i + chunkSize, myGames.length)} spel...`;
-                bar.style.width = (i / myGames.length * 100) + "%";
-
-                try {
-                    const url = PROXY + encodeURIComponent(`https://boardgamegeek.com/xmlapi/boardgame/${ids}`);
-                    const res = await fetch(url);
-                    const text = await res.text();
-                    
-                    const gameBlocks = text.split('<boardgame ').slice(1);
-                    gameBlocks.forEach(block => {
-                        const id = block.match(/objectid="(\d+)"/)?.[1];
-                        const game = myGames.find(x => x.id === id);
-                        if (game) {
-                            const polls = {};
-                            const resultsBlocks = block.match(/<results numplayers="(\d+\+?)">[\s\S]*?<\/results>/g);
-                            if (resultsBlocks) {
-                                resultsBlocks.forEach(rb => {
-                                    const n = rb.match(/numplayers="(\d+\+?)"/)[1];
-                                    const b = parseInt(rb.match(/value="Best" numvotes="(\d+)"/)?.[1] || 0);
-                                    const r = parseInt(rb.match(/value="Recommended" numvotes="(\d+)"/)?.[1] || 0);
-                                    const x = parseInt(rb.match(/value="Not Recommended" numvotes="(\d+)"/)?.[1] || 0);
-                                    
-                                    // NY MYCKET SNÄLLARE LOGIK:
-                                    // Om Best har flest röster -> Best
-                                    // Om Best + Rek är större än Not Recommended -> Rek
-                                    if (b >= r && b > x) polls[n] = "best";
-                                    else if ((b + r) >= x && (b+r) > 0) polls[n] = "rec";
-                                });
-                            }
-                            game.polls = polls;
-                        }
-                    });
-                    localStorage.setItem('zebba_final_v200', JSON.stringify(myGames));
-                } catch (e) { console.error("Fel", e); }
-                await new Promise(r => setTimeout(r, 600));
+            for (let i = 0; i < totalBatches; i++) {
+                const start = i * batchSize;
+                const end = start + batchSize;
+                const chunkIds = db.slice(start, end).map(g => g.id).join(',');
+                
+                // Länken
+                const a = document.createElement('a');
+                a.href = `https://boardgamegeek.com/xmlapi2/thing?id=${chunkIds}&stats=1`;
+                a.target = "_blank";
+                a.className = "bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded text-[10px] font-bold shadow transition-colors";
+                a.innerText = `DEL ${i + 1}`;
+                container.appendChild(a);
             }
+        }
 
-            bar.style.width = "100%";
-            log.innerText = "KLART! RÖSTDATA ANALYSERAD.";
-            document.getElementById('goToShelfBtn').classList.remove('hidden');
-        });
+        function runStep2() {
+            const txt = document.getElementById('input2').value;
+            if (!txt.includes('<item')) return alert('Klistra in XML-koden först!');
 
-        document.getElementById('goToShelfBtn').addEventListener('click', () => {
-            document.getElementById('setup').classList.add('hidden');
-            document.getElementById('filters').classList.remove('hidden');
+            const items = txt.split('<item ').slice(1);
+            let updatedCount = 0;
+
+            items.forEach(chunk => {
+                const id = chunk.match(/id="(\d+)"/)?.[1];
+                const game = db.find(g => g.id === id);
+                
+                if (game) {
+                    // 1. Hämta betyg
+                    const avgMatch = chunk.match(/<average value="([\d.]+)"/);
+                    if (avgMatch) game.avg = parseFloat(avgMatch[1]).toFixed(1);
+
+                    // 2. Hämta röster (den kritiska delen)
+                    const polls = {};
+                    // Hitta sektionen för suggested_numplayers
+                    const pollSection = chunk.match(/<poll name="suggested_numplayers"[\s\S]*?<\/poll>/);
+                    
+                    if (pollSection) {
+                        const results = pollSection[0].match(/<results numplayers="(\d+\+?)">[\s\S]*?<\/results>/g);
+                        if (results) {
+                            results.forEach(resBlock => {
+                                const num = resBlock.match(/numplayers="(\d+\+?)"/)[1];
+                                
+                                const getVotes = (val) => {
+                                    const m = resBlock.match(new RegExp(`value="${val}" numvotes="(\\d+)"`));
+                                    return m ? parseInt(m[1]) : 0;
+                                };
+
+                                const best = getVotes("Best");
+                                const rec = getVotes("Recommended");
+                                const not = getVotes("Not Recommended");
+
+                                // SNÄLL LOGIK FÖR ATT MATCHA SPEL
+                                if (best > 0 && best >= rec && best > not) {
+                                    polls[num] = "best";
+                                } else if ((best + rec) > not && (best + rec) > 0) {
+                                    polls[num] = "rec";
+                                }
+                            });
+                        }
+                    }
+                    game.polls = polls;
+                    game.hasData = true; // Markera som klar
+                    updatedCount++;
+                }
+            });
+
+            // Spara och rensa rutan
+            localStorage.setItem('zebba_db_v1', JSON.stringify(db));
+            document.getElementById('input2').value = '';
+            document.getElementById('input2').placeholder = `Toppen! ${updatedCount} spel uppdaterade. Ta nästa del!`;
+            updateProgress();
+        }
+
+        function updateProgress() {
+            const total = db.length;
+            const done = db.filter(g => g.hasData).length;
+            const pct = Math.round((done / total) * 100);
+            
+            document.getElementById('progressBar').style.width = `${pct}%`;
+            document.getElementById('progressText').innerText = `${done} av ${total} spel klara (${pct}%)`;
+
+            if (pct >= 95) { // Tillåt lite marginal
+                document.getElementById('finishBtn').classList.remove('hidden');
+            }
+        }
+
+        function finishSetup() {
+            showApp();
+        }
+
+        function showApp() {
+            document.getElementById('setupPanel').classList.add('hidden');
+            document.getElementById('mainApp').classList.remove('hidden');
             render();
-        });
+        }
 
+        // --- APP LOGIK ---
         function setFilter(l) {
-            filterLevel = l;
-            ['best', 'rec', 'all'].forEach(id => document.getElementById('btn-'+id).className = id === l ? "bg-indigo-600 p-4 rounded-xl text-[10px] font-black italic border-b-4 border-indigo-900 shadow-lg" : "bg-slate-700 p-4 rounded-xl text-[10px] font-black italic shadow-lg");
+            filter = l;
+            document.querySelectorAll('.filter-btn').forEach(b => {
+                b.className = "filter-btn p-4 rounded-xl text-[10px] font-black italic shadow-lg " + 
+                              (b.id === 'btn-'+l ? "bg-indigo-600 border-b-4 border-indigo-900" : "bg-slate-700");
+            });
             render();
         }
 
         function render() {
             const count = document.getElementById('playerCount').value;
             const grid = document.getElementById('gameGrid');
-            const filtered = myGames.filter(g => {
-                if (filterLevel === 'all') return true;
-                const s = g.polls[count] || g.polls[count+"+"];
-                return filterLevel === 'best' ? s === 'best' : (s === 'best' || s === 'rec');
+            
+            // Sortera: Bäst betyg först
+            let list = db.filter(g => {
+                if (filter === 'all') return true;
+                const status = g.polls?.[count] || g.polls?.[count+"+"];
+                if (filter === 'best') return status === 'best';
+                if (filter === 'rec') return status === 'best' || status === 'rec';
             }).sort((a,b) => b.avg - a.avg);
 
-            grid.innerHTML = filtered.map(g => {
-                const s = g.polls[count] || g.polls[count+"+"];
-                const badge = s === 'best' ? '<span class="bg-emerald-500 text-[8px] px-2 py-1 rounded text-white font-black italic">BÄST</span>' : (s === 'rec' ? '<span class="bg-indigo-600 text-[8px] px-2 py-1 rounded text-white font-black italic">REK</span>' : '');
-                return `<div class="bg-slate-800 p-5 rounded-[2rem] flex items-center gap-5 border border-slate-700 shadow-xl">
-                    <img src="${g.img}" class="w-16 h-16 object-cover rounded-2xl bg-slate-900 shadow-inner">
+            document.getElementById('statusMsg').innerText = `${list.length} spel visas`;
+
+            if (list.length === 0) {
+                grid.innerHTML = `<div class="py-10 text-slate-500 text-xs">Inga spel hittades för ${count} spelare med filtret "${filter.toUpperCase()}".<br>Testa "Alla" eller byt spelarantal.</div>`;
+                return;
+            }
+
+            grid.innerHTML = list.map(g => {
+                const status = g.polls?.[count] || g.polls?.[count+"+"];
+                let badge = "";
+                if (status === 'best') badge = '<span class="bg-emerald-500 text-[8px] px-2 py-1 rounded text-white font-black shadow">BÄST</span>';
+                else if (status === 'rec') badge = '<span class="bg-indigo-600 text-[8px] px-2 py-1 rounded text-white font-black shadow">REK</span>';
+
+                return `
+                <div class="bg-slate-800 p-4 rounded-[1.5rem] flex items-center gap-4 border border-slate-700 shadow-xl">
+                    <img src="${g.img}" class="w-16 h-16 object-cover rounded-xl bg-slate-900">
                     <div class="flex-grow min-w-0 text-left">
                         <div class="flex items-center justify-between mb-1 gap-2">
-                            <h3 class="font-black text-slate-100 text-[12px] uppercase truncate italic leading-tight">${g.title}</h3>
+                            <h3 class="font-black text-slate-100 text-[11px] uppercase truncate italic">${g.title}</h3>
                             ${badge}
                         </div>
-                        <p class="text-[10px] text-indigo-400 font-black italic uppercase leading-none">BGG: ${g.avg}</p>
+                        <p class="text-[9px] text-indigo-400 font-bold">BGG: ${g.avg}</p>
                     </div>
                 </div>`;
             }).join('');
         }
-        document.getElementById('playerCount').addEventListener('change', render);
+
+        function resetAll() {
+            if(confirm("Är du säker? All data raderas.")) {
+                localStorage.clear();
+                location.reload();
+            }
+        }
+
         init();
     </script>
 </body>
