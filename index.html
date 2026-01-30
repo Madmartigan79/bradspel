@@ -3,19 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zebbas Spelhylla</title>
+    <title>Vad ska vi spela?</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-900 text-white min-h-screen py-10 px-4 font-sans italic uppercase font-black">
+<body class="bg-slate-900 text-white min-h-screen py-10 px-4 font-sans italic uppercase font-black tracking-tight">
     <div class="max-w-md mx-auto">
         <header class="text-center mb-10">
             <h1 class="text-4xl font-black text-indigo-500 tracking-tighter italic uppercase">Zebbas Games</h1>
             <p id="gameCount" class="text-slate-500 text-[10px] font-bold uppercase mt-2 tracking-[0.2em] italic"></p>
         </header>
 
-        <div id="filterSection" class="hidden bg-slate-800 p-6 rounded-[2rem] shadow-2xl border border-slate-700 mb-6 font-bold uppercase italic">
-            <label class="block text-[10px] font-bold uppercase text-slate-400 mb-4 text-center tracking-widest italic text-xs">Antal spelare</label>
-            <div class="flex flex-col gap-4 italic font-black">
+        <div id="filterSection" class="hidden bg-slate-800 p-6 rounded-[2rem] shadow-2xl border border-slate-700 mb-6">
+            <div class="flex flex-col gap-4">
                 <select id="playerCount" class="w-full bg-slate-900 border-2 border-slate-700 rounded-2xl p-4 font-bold text-center text-2xl outline-none focus:border-indigo-500 appearance-none italic">
                     <option value="1">1 Person</option>
                     <option value="2" selected>2 Personer</option>
@@ -24,37 +23,40 @@
                     <option value="5">5 Personer</option>
                     <option value="6">6+ Personer</option>
                 </select>
-                <div class="flex items-center justify-between px-2 bg-slate-900/50 p-3 rounded-xl">
-                    <span class="text-[9px] text-slate-400 uppercase">Visa endast rekommenderade</span>
-                    <input type="checkbox" id="recOnly" class="w-5 h-5 accent-indigo-500 cursor-pointer">
+                
+                <div class="grid grid-cols-2 gap-2 p-1 bg-slate-900 rounded-2xl border border-slate-700">
+                    <button id="showBest" class="py-2 rounded-xl text-[10px] transition-all bg-indigo-600 text-white">Endast Bäst</button>
+                    <button id="showRec" class="py-2 rounded-xl text-[10px] transition-all bg-transparent text-slate-500">Inkl. Rek.</button>
                 </div>
+
                 <div class="grid grid-cols-2 gap-2">
-                    <button id="randomBtn" class="bg-indigo-600 hover:bg-indigo-500 text-[11px] py-3 rounded-xl shadow-lg transition-all active:scale-95">Slumpa spel 🎲</button>
-                    <button id="updateBtn" class="bg-slate-700 hover:bg-slate-600 text-[11px] py-3 rounded-xl transition-all">Uppdatera ⚙️</button>
+                    <button id="randomBtn" class="bg-indigo-600 hover:bg-indigo-500 text-[11px] py-3 rounded-xl shadow-lg transition-all active:scale-95 uppercase italic font-black">Slumpa 🎲</button>
+                    <button id="updateBtn" class="bg-slate-700 hover:bg-slate-600 text-[11px] py-3 rounded-xl transition-all uppercase italic font-black">Uppdatera ⚙️</button>
                 </div>
             </div>
         </div>
 
         <div id="importSection" class="bg-slate-800 p-8 rounded-[2rem] shadow-2xl border border-slate-700 font-bold uppercase italic font-black">
-            <h2 class="text-xl font-bold mb-6 text-center italic uppercase tracking-tight text-emerald-400">Importera Samling</h2>
-            <div class="space-y-4 mb-8 italic font-black uppercase tracking-tight text-center">
+            <h2 class="text-xl font-bold mb-6 text-center italic uppercase tracking-tight text-indigo-400">Importera Samling</h2>
+            <div class="space-y-4 mb-8 text-center">
                 <a href="https://boardgamegeek.com/xmlapi2/collection?username=zebbas&own=1&stats=1&pagesize=500" target="_blank" class="block bg-indigo-600 p-4 rounded-xl font-black uppercase text-sm hover:bg-indigo-500 transition-all shadow-lg">
                     1. Öppna BGG-Data
                 </a>
                 <p class="text-[10px] text-slate-400 leading-relaxed italic uppercase font-medium">
-                    Expansioner rensas bort automatiskt vid import.
+                    Expansioner rensas bort helt vid import.
                 </p>
             </div>
-            <textarea id="xmlInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-48 text-[10px] font-mono mb-6 outline-none focus:border-indigo-400 transition-colors" placeholder="Klistra in XML här..."></textarea>
-            <button id="saveBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 py-5 rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 text-lg">Spara Allt</button>
+            <textarea id="xmlInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-48 text-[10px] font-mono mb-6 outline-none focus:border-indigo-400" placeholder="Klistra in XML här..."></textarea>
+            <button id="saveBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 py-5 rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg text-lg italic">Spara Allt</button>
         </div>
 
-        <div id="gameGrid" class="mt-10 space-y-4 font-bold uppercase italic font-black italic"></div>
+        <div id="gameGrid" class="mt-10 space-y-4"></div>
     </div>
 
     <script>
         const playerCountSelect = document.getElementById('playerCount');
-        const recOnlyCheck = document.getElementById('recOnly');
+        const showBestBtn = document.getElementById('showBest');
+        const showRecBtn = document.getElementById('showRec');
         const gameGrid = document.getElementById('gameGrid');
         const importSection = document.getElementById('importSection');
         const filterSection = document.getElementById('filterSection');
@@ -64,12 +66,13 @@
         const randomBtn = document.getElementById('randomBtn');
 
         let myGames = JSON.parse(localStorage.getItem('zebbas_collection')) || [];
+        let filterLevel = 'best'; // 'best' eller 'rec'
 
         function init() {
             if (myGames.length > 0) {
                 importSection.classList.add('hidden');
                 filterSection.classList.remove('hidden');
-                document.getElementById('gameCount').innerText = `${myGames.length} brädspel sparade`;
+                document.getElementById('gameCount').innerText = `${myGames.length} spel sparade`;
                 render();
             }
         }
@@ -84,39 +87,34 @@
             
             const games = [];
             items.forEach(item => {
-                // STRÄNG KONTROLL AV EXPANSIONER
-                const subtypeAttr = item.getAttribute('subtype');
-                const isExpansionType = item.querySelector('subtype[value="boardgameexpansion"]');
-                if (subtypeAttr === 'boardgameexpansion' || isExpansionType) return;
-
-                const nameNode = item.querySelector('name');
-                const title = nameNode ? (nameNode.textContent || nameNode.getAttribute('value')) : "Okänt";
-                const objectId = item.getAttribute('objectid');
+                const subtype = item.getAttribute('subtype');
+                const titleNode = item.querySelector('name');
+                const title = titleNode ? (titleNode.textContent || titleNode.getAttribute('value')) : "Okänt";
                 
+                // AGGRESSIV EXPANSIONS-KONTROLL
+                const isExp = (subtype && subtype.includes('expansion')) || 
+                              title.toLowerCase().includes('expansion') || 
+                              item.innerHTML.includes('boardgameexpansion');
+                if (isExp) return;
+
+                const objectId = item.getAttribute('objectid');
                 const polls = item.querySelectorAll('poll[name="suggested_numplayers"] results');
                 const playerPolls = {};
                 
                 polls.forEach(res => {
                     const num = res.getAttribute('numplayers');
-                    const best = parseInt(res.querySelector('result[value="Best"]')?.getAttribute('numvotes') || 0);
-                    const rec = parseInt(res.querySelector('result[value="Recommended"]')?.getAttribute('numvotes') || 0);
-                    const bad = parseInt(res.querySelector('result[value="Not Recommended"]')?.getAttribute('numvotes') || 0);
+                    const v = (val) => parseInt(res.querySelector(`result[value="${val}"]`)?.getAttribute('numvotes') || 0);
+                    const best = v("Best"), rec = v("Recommended"), bad = v("Not Recommended");
                     
-                    let status = "ok";
-                    if (best > rec && best > bad) status = "best";
-                    else if ((best + rec) > bad) status = "recommended";
-                    else if (bad > (best + rec)) status = "bad";
-                    
-                    playerPolls[num] = status;
+                    if (best > rec && best > bad) playerPolls[num] = "best";
+                    else if ((best + rec) > bad) playerPolls[num] = "recommended";
+                    else playerPolls[num] = "bad";
                 });
 
-                const stats = item.querySelector('stats');
                 games.push({
                     id: objectId,
                     title: title,
                     img: item.querySelector('thumbnail')?.textContent || '',
-                    min: parseInt(stats?.getAttribute('minplayers') || 0),
-                    max: parseInt(stats?.getAttribute('maxplayers') || 0),
                     avg: parseFloat(item.querySelector('rating > average')?.getAttribute('value') || 0).toFixed(1),
                     polls: playerPolls
                 });
@@ -126,72 +124,62 @@
             location.reload();
         });
 
-        updateBtn.addEventListener('click', () => {
-            importSection.classList.toggle('hidden');
+        // Filter-knappar
+        showBestBtn.addEventListener('click', () => {
+            filterLevel = 'best';
+            showBestBtn.className = "py-2 rounded-xl text-[10px] transition-all bg-indigo-600 text-white";
+            showRecBtn.className = "py-2 rounded-xl text-[10px] transition-all bg-transparent text-slate-500";
+            render();
         });
 
+        showRecBtn.addEventListener('click', () => {
+            filterLevel = 'rec';
+            showRecBtn.className = "py-2 rounded-xl text-[10px] transition-all bg-indigo-600 text-white";
+            showBestBtn.className = "py-2 rounded-xl text-[10px] transition-all bg-transparent text-slate-500";
+            render();
+        });
+
+        updateBtn.addEventListener('click', () => { importSection.classList.toggle('hidden'); });
+        playerCountSelect.addEventListener('change', render);
         randomBtn.addEventListener('click', () => {
             const cards = Array.from(gameGrid.children);
             if (cards.length === 0) return;
-            
-            // Rensa gamla markeringar
             cards.forEach(c => c.classList.remove('ring-4', 'ring-indigo-400', 'scale-105'));
-            
-            const luckyIndex = Math.floor(Math.random() * cards.length);
-            const luckyCard = cards[luckyIndex];
-            
-            luckyCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            luckyCard.classList.add('ring-4', 'ring-indigo-400', 'scale-105', 'transition-all', 'duration-500');
+            const lucky = cards[Math.floor(Math.random() * cards.length)];
+            lucky.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            lucky.classList.add('ring-4', 'ring-indigo-400', 'scale-105', 'transition-all');
         });
 
-        [playerCountSelect, recOnlyCheck].forEach(el => el.addEventListener('change', render));
-
         function render() {
-            const count = parseInt(playerCountSelect.value);
-            const onlyRec = recOnlyCheck.checked;
-
+            const count = playerCountSelect.value;
+            
             let filtered = myGames.filter(g => {
-                const pollStatus = g.polls[count] || g.polls[count+"+"] || "ok";
-                const isPossible = count >= g.min && count <= g.max;
-                
-                if (onlyRec) {
-                    return isPossible && (pollStatus === 'best' || pollStatus === 'recommended');
-                }
-                return isPossible && pollStatus !== 'bad';
+                const status = g.polls[count] || g.polls[count+"+"] || "bad";
+                if (filterLevel === 'best') return status === 'best';
+                return status === 'best' || status === 'recommended';
             });
 
-            filtered.sort((a,b) => {
-                const statusA = a.polls[count] || "ok";
-                const statusB = b.polls[count] || "ok";
-                if (statusA === 'best' && statusB !== 'best') return -1;
-                if (statusB === 'best' && statusA !== 'best') return 1;
-                return b.avg - a.avg;
-            });
+            filtered.sort((a,b) => b.avg - a.avg);
 
             gameGrid.innerHTML = filtered.map(game => {
-                const status = game.polls[count] || game.polls[count+"+"] || "ok";
-                let badge = "";
-                if (status === 'best') badge = `<span class="bg-emerald-500 text-[8px] px-2 py-0.5 rounded-full text-white ml-2 shadow-sm font-black italic uppercase">BÄST</span>`;
-                if (status === 'recommended') badge = `<span class="bg-indigo-500 text-[8px] px-2 py-0.5 rounded-full text-white ml-2 shadow-sm font-black italic uppercase">REK</span>`;
+                const status = game.polls[count] || game.polls[count+"+"];
+                const badge = status === 'best' ? 
+                    `<span class="bg-emerald-500 text-[8px] px-2 py-0.5 rounded-full text-white ml-2">BÄST</span>` : 
+                    `<span class="bg-indigo-500 text-[8px] px-2 py-0.5 rounded-full text-white ml-2">REK</span>`;
 
                 return `
-                <div class="bg-slate-800 p-5 rounded-[1.5rem] flex items-center gap-5 border border-slate-700/50 shadow-xl transition-all duration-300 overflow-hidden relative">
-                    <a href="https://boardgamegeek.com/boardgame/${game.id}" target="_blank" class="w-16 h-16 flex-shrink-0 z-10">
-                        <img src="${game.img}" class="w-full h-full object-cover rounded-xl bg-slate-900 shadow-inner hover:scale-110 transition-transform" onerror="this.src='https://via.placeholder.com/100?text=GAME';">
+                <div class="bg-slate-800 p-5 rounded-[1.5rem] flex items-center gap-5 border border-slate-700 shadow-xl transition-all">
+                    <a href="https://boardgamegeek.com/boardgame/${game.id}" target="_blank" class="w-16 h-16 flex-shrink-0">
+                        <img src="${game.img}" class="w-full h-full object-cover rounded-xl bg-slate-900 shadow-inner hover:scale-110 transition-transform">
                     </a>
-                    <div class="flex-grow z-10">
+                    <div class="flex-grow">
                         <div class="flex items-center mb-1">
                             <h3 class="font-bold text-slate-100 text-[13px] leading-tight italic uppercase truncate max-w-[180px]">${game.title}</h3>
                             ${badge}
                         </div>
-                        <div class="flex gap-4 items-center">
-                            <div class="flex flex-col text-[10px] font-black uppercase italic tracking-tighter text-indigo-400">
-                                <span class="text-slate-500 font-bold mb-0.5 text-[8px] italic">BGG Snitt</span>
-                                ${game.avg}
-                            </div>
-                            <div class="text-slate-500 text-[9px] font-bold uppercase italic ml-auto bg-slate-900/50 px-2 py-1 rounded-md">
-                                ${game.min}-${game.max} P
-                            </div>
+                        <div class="flex flex-col text-[10px] font-black uppercase italic tracking-tighter text-indigo-400">
+                            <span class="text-slate-500 font-bold mb-0.5 text-[8px]">BGG Snitt</span>
+                            ${game.avg}
                         </div>
                     </div>
                 </div>
@@ -199,7 +187,7 @@
             }).join('');
 
             if (filtered.length === 0) {
-                gameGrid.innerHTML = `<div class="text-center py-20 text-slate-500 italic font-medium uppercase text-xs">Inga spel matchar valet...</div>`;
+                gameGrid.innerHTML = `<div class="text-center py-20 text-slate-500 italic font-medium uppercase text-xs tracking-[0.2em]">Inga ${filterLevel === 'best' ? 'BÄSTA' : 'REKOMMENDERADE'} spel hittades...</div>`;
             }
         }
 
