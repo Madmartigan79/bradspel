@@ -9,14 +9,14 @@
 <body class="bg-slate-900 text-white min-h-screen py-10 px-4 font-sans italic uppercase font-black">
     <div class="max-w-md mx-auto">
         <header class="text-center mb-10">
-            <h1 class="text-4xl font-black text-indigo-500 tracking-tighter italic uppercase">ZZebbas Games</h1>
+            <h1 class="text-4xl font-black text-indigo-500 tracking-tighter italic uppercase">Zebbas Gs</h1>
             <p id="gameCount" class="text-slate-500 text-[10px] font-bold uppercase mt-2 tracking-[0.2em] italic"></p>
         </header>
 
         <div id="filterSection" class="hidden bg-slate-800 p-6 rounded-[2rem] shadow-2xl border border-slate-700 mb-6 font-bold uppercase italic">
-            <label class="block text-[10px] font-bold uppercase text-slate-400 mb-4 text-center tracking-widest italic">Antal spelare</label>
+            <label class="block text-[10px] font-bold uppercase text-slate-400 mb-4 text-center tracking-widest italic text-xs">Antal spelare</label>
             <div class="flex flex-col gap-4 italic font-black">
-                <select id="playerCount" class="w-full bg-slate-900 border-2 border-slate-700 rounded-2xl p-4 font-bold text-center text-2xl outline-none focus:border-indigo-500 appearance-none">
+                <select id="playerCount" class="w-full bg-slate-900 border-2 border-slate-700 rounded-2xl p-4 font-bold text-center text-2xl outline-none focus:border-indigo-500 appearance-none italic">
                     <option value="1">1 Person</option>
                     <option value="2" selected>2 Personer</option>
                     <option value="3">3 Personer</option>
@@ -24,22 +24,22 @@
                     <option value="5">5 Personer</option>
                     <option value="6">6+ Personer</option>
                 </select>
-                <button id="updateBtn" class="text-[10px] text-slate-500 hover:text-indigo-400 uppercase font-black transition-colors">Uppdatera bibliotek ⚙️</button>
+                <button id="updateBtn" class="text-[10px] text-slate-500 hover:text-indigo-400 uppercase font-black transition-colors italic tracking-widest uppercase">Uppdatera bibliotek ⚙️</button>
             </div>
         </div>
 
         <div id="importSection" class="bg-slate-800 p-8 rounded-[2rem] shadow-2xl border border-slate-700 font-bold uppercase italic font-black">
             <h2 class="text-xl font-bold mb-6 text-center italic uppercase tracking-tight">Importera Spel</h2>
             <div class="space-y-4 mb-8 italic font-black uppercase tracking-tight">
-                <a id="bggLink" href="https://boardgamegeek.com/xmlapi2/collection?username=zebbas&own=1&stats=1&pagesize=500&page=1" target="_blank" class="block text-center bg-indigo-600 p-4 rounded-xl font-black uppercase text-sm hover:bg-indigo-500 transition-all shadow-lg">
+                <a href="https://boardgamegeek.com/xmlapi2/collection?username=zebbas&own=1&stats=1&pagesize=500" target="_blank" class="block text-center bg-indigo-600 p-4 rounded-xl font-black uppercase text-sm hover:bg-indigo-500 transition-all shadow-lg italic">
                     1. Öppna BGG-Data
                 </a>
                 <p class="text-[10px] text-slate-400 leading-relaxed text-center italic uppercase font-medium italic">
-                    Kopiera ALL text på sidan (Ctrl+A), klistra in här och spara.
+                    Kopiera ALL text (Ctrl+A), klistra in här och tryck på spara.
                 </p>
             </div>
-            <textarea id="xmlInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-48 text-[10px] font-mono mb-6 outline-none focus:border-indigo-400 transition-colors" placeholder="Klistra in koden här..."></textarea>
-            <button id="saveBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 py-5 rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 italic">Spara Allt</button>
+            <textarea id="xmlInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-48 text-[10px] font-mono mb-6 outline-none focus:border-indigo-400 transition-colors italic" placeholder="Klistra in koden här..."></textarea>
+            <button id="saveBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 py-5 rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 italic text-lg">Spara Allt</button>
         </div>
 
         <div id="gameGrid" class="mt-10 space-y-4 font-bold uppercase italic font-black italic"></div>
@@ -66,46 +66,44 @@
         }
 
         saveBtn.addEventListener('click', () => {
-            const rawData = xmlInput.value.trim();
+            const rawData = xmlInput.value;
             if (!rawData) { alert("Textrutan är tom!"); return; }
 
-            const parser = new DOMParser();
-            const xml = parser.parseFromString(rawData, "text/xml");
-            
-            // Vi hämtar ALLA item-taggar
-            const items = xml.getElementsByTagName('item');
-            
-            if (items.length === 0) {
-                alert("Hittade inga spel i texten. Dubbelkolla att du kopierade allt.");
-                return;
-            }
+            // "THE TANK" - Vi letar efter mönster istället för att lita på XML-strukturen
+            // Vi delar upp texten vid varje <item ... >
+            const blocks = rawData.split('<item');
+            blocks.shift(); // Ta bort första delen innan första <item>
 
             const games = [];
-            for (let i = 0; i < items.length; i++) {
-                const item = items[i];
-                const nameNode = item.getElementsByTagName('name')[0];
-                const title = nameNode ? (nameNode.textContent || nameNode.getAttribute('value')) : "Okänt spel";
-                
-                const statsNode = item.getElementsByTagName('stats')[0];
-                const ratingNode = item.getElementsByTagName('rating')[0];
-                const averageNode = ratingNode ? ratingNode.getElementsByTagName('average')[0] : null;
+            blocks.forEach(block => {
+                try {
+                    // Fiska ut data med hjälp av smarta sökningar (RegExp)
+                    const titleMatch = block.match(/<name[^>]*>(.*?)<\/name>/);
+                    const thumbMatch = block.match(/<thumbnail>(.*?)<\/thumbnail>/);
+                    const minMatch = block.match(/minplayers="(\d+)"/);
+                    const maxMatch = block.match(/maxplayers="(\d+)"/);
+                    const avgMatch = block.match(/<average value="([\d.]+)"/);
+                    const myMatch = block.match(/<rating value="([\d.]+)"/);
 
-                games.push({
-                    title: title,
-                    img: item.getElementsByTagName('thumbnail')[0]?.textContent || '',
-                    min: parseInt(statsNode?.getAttribute('minplayers') || 0),
-                    max: parseInt(statsNode?.getAttribute('maxplayers') || 0),
-                    avg: averageNode ? parseFloat(averageNode.getAttribute('value')).toFixed(1) : "0.0",
-                    my: ratingNode ? ratingNode.getAttribute('value') : "N/A"
-                });
-            }
+                    if (titleMatch) {
+                        games.push({
+                            title: titleMatch[1].replace('<![CDATA[', '').replace(']]>', ''),
+                            img: thumbMatch ? thumbMatch[1] : '',
+                            min: minMatch ? parseInt(minMatch[1]) : 0,
+                            max: maxMatch ? parseInt(maxMatch[1]) : 0,
+                            avg: avgMatch ? parseFloat(avgMatch[1]).toFixed(1) : "0.0",
+                            my: (myMatch && !block.includes('value="N/A"')) ? myMatch[1] : "-"
+                        });
+                    }
+                } catch (e) { console.error("Hoppade över ett spel pga fel"); }
+            });
 
             if (games.length > 0) {
                 localStorage.setItem('zebbas_collection', JSON.stringify(games));
-                alert(`Succé! Hittade ${games.length} spel.`);
+                alert(`BOOM! Hittade och sparade ${games.length} spel.`);
                 location.reload();
             } else {
-                alert("Kunde inte läsa in spelen.");
+                alert("Kunde inte hitta några spel i texten. Är du säker på att du kopierade allt?");
             }
         });
 
@@ -131,12 +129,12 @@
                         <h3 class="font-bold text-slate-100 text-[14px] leading-tight mb-2 italic uppercase">${game.title}</h3>
                         <div class="flex gap-4">
                             <div class="flex flex-col text-[10px] font-black uppercase italic tracking-tighter text-indigo-400">
-                                <span class="text-slate-500 font-bold mb-0.5 italic uppercase">BGG Snitt</span>
+                                <span class="text-slate-500 font-bold mb-0.5 italic uppercase text-[8px]">BGG Snitt</span>
                                 ${game.avg}
                             </div>
                             <div class="flex flex-col text-[10px] font-black uppercase italic tracking-tighter text-slate-300">
-                                <span class="text-slate-500 font-bold mb-0.5 italic uppercase">Ditt betyg</span>
-                                ${game.my !== 'N/A' && game.my !== '' ? game.my : '-'}
+                                <span class="text-slate-500 font-bold mb-0.5 italic uppercase text-[8px]">Ditt betyg</span>
+                                ${game.my}
                             </div>
                         </div>
                     </div>
@@ -144,7 +142,7 @@
             `).join('');
 
             if (filtered.length === 0) {
-                gameGrid.innerHTML = `<div class="text-center py-20 text-slate-500 italic font-medium italic uppercase">Inga spel passar...</div>`;
+                gameGrid.innerHTML = `<div class="text-center py-20 text-slate-500 italic font-medium italic uppercase tracking-widest text-xs">Inga spel passar...</div>`;
             }
         }
 
