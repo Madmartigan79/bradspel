@@ -10,20 +10,23 @@
     <div class="max-w-md mx-auto">
         <header class="text-center mb-10">
             <h1 class="text-4xl font-black text-indigo-500 tracking-tighter italic uppercase">Zebbas Games</h1>
-            <p id="gameCount" class="text-slate-500 text-[10px] mt-2">Redo</p>
+            <p id="gameCount" class="text-slate-500 text-[10px] mt-2 italic">Status: Väntar</p>
         </header>
 
         <div id="importSection" class="bg-slate-800 p-8 rounded-[2rem] border-4 border-indigo-600 mb-10 text-center shadow-2xl">
-            <h2 class="text-xl mb-4 text-indigo-400 leading-tight">Importera din samling</h2>
+            <h2 class="text-xl mb-4 text-indigo-400 leading-tight">1. Importera Samling</h2>
             <div class="space-y-4 mb-8">
-                <a href="https://boardgamegeek.com/xmlapi2/collection?username=zebbas&own=1&stats=1" target="_blank" class="block bg-indigo-600 p-4 rounded-xl text-xs hover:bg-indigo-500 transition-all font-black uppercase">
-                    1. Öppna BGG-Länk
-                </a>
-                <p class="text-[10px] text-slate-400 italic">Vänta tills sidan laddat, tryck Ctrl+A, Ctrl+C och klistra in här:</p>
+                <a href="https://boardgamegeek.com/xmlapi2/collection?username=zebbas&own=1&stats=1" target="_blank" class="block bg-indigo-600 p-4 rounded-xl text-xs hover:bg-indigo-500 transition-all font-black uppercase">Öppna BGG-Data</a>
                 <textarea id="xmlInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-48 text-[10px] font-mono text-indigo-300 outline-none" placeholder="Klistra in koden här..."></textarea>
-                <button id="saveBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 py-5 rounded-2xl font-black uppercase shadow-lg text-lg italic">2. Spara Allt</button>
+                <button id="saveBtn" class="w-full bg-emerald-600 p-4 rounded-2xl font-black uppercase shadow-lg text-sm italic">Spara Spel</button>
             </div>
-            <button onclick="localStorage.clear(); location.reload();" class="text-[8px] text-red-500 underline opacity-50 uppercase">Rensa minne & nollställ</button>
+            
+            <div id="syncStatusDiv" class="hidden pt-6 border-t border-slate-700">
+                <h2 class="text-xl mb-4 text-amber-400 italic leading-tight">2. Aktivera Bäst/Rek</h2>
+                <button id="syncBtn" class="w-full bg-amber-500 text-slate-900 p-5 rounded-xl text-sm font-black shadow-xl mb-4">Hämta Röstningsdata ⚡</button>
+                <p class="text-[9px] text-slate-400">Behövs bara göras en gång.</p>
+            </div>
+            <button id="closeBtn" class="mt-6 text-[10px] text-slate-500 underline uppercase hidden">Stäng Setup</button>
         </div>
 
         <div id="filterSection" class="hidden bg-slate-800 p-6 rounded-[2rem] border border-slate-700 mb-6 font-black italic">
@@ -36,123 +39,137 @@
                 <option value="6">6+ Personer</option>
             </select>
             
-            <div class="grid grid-cols-2 gap-2">
-                <button id="randomBtn" class="bg-indigo-600 py-4 rounded-xl text-[11px] font-black uppercase italic">Slumpa Spel 🎲</button>
-                <button id="updateBtn" class="bg-slate-700 py-4 rounded-xl text-[11px] font-black uppercase italic text-slate-400">Setup ⚙️</button>
+            <div class="grid grid-cols-2 gap-2 mb-4">
+                <button onclick="setFilter('best')" id="btn-best" class="bg-indigo-600 p-4 rounded-xl text-[10px] font-black">Bäst</button>
+                <button onclick="setFilter('rec')" id="btn-rec" class="bg-slate-700 p-4 rounded-xl text-[10px] font-black">Inkl. Rek.</button>
             </div>
+            <button onclick="document.getElementById('importSection').classList.toggle('hidden')" class="w-full text-[9px] text-slate-600 uppercase">Setup ⚙️</button>
         </div>
 
-        <div id="gameGrid" class="mt-10 space-y-4"></div>
+        <div id="gameGrid" class="space-y-4"></div>
     </div>
 
     <script>
-        let myGames = JSON.parse(localStorage.getItem('zebba_fail_safe_v1')) || [];
+        const PROXY = "https://corsproxy.io/?";
+        let myGames = JSON.parse(localStorage.getItem('zebba_ultimate_v1')) || [];
+        let filterLevel = 'best';
 
         function init() {
             if (myGames.length > 0) {
                 document.getElementById('importSection').classList.add('hidden');
                 document.getElementById('filterSection').classList.remove('hidden');
-                document.getElementById('gameCount').innerText = `${myGames.length} Brädspel i hyllan`;
+                document.getElementById('closeBtn').classList.remove('hidden');
+                document.getElementById('syncStatusDiv').classList.remove('hidden');
+                document.getElementById('gameCount').innerText = `${myGames.length} Spel i hyllan`;
                 render();
             }
         }
 
         document.getElementById('saveBtn').addEventListener('click', () => {
-            const rawData = document.getElementById('xmlInput').value.trim();
-            if (!rawData) return;
+            const rawData = document.getElementById('xmlInput').value;
+            // TEXT-SCANNER: Vi delar upp texten utan att använda en XML-parser
+            const items = rawData.split('<item').slice(1);
             
-            const parser = new DOMParser();
-            const xml = parser.parseFromString(rawData, "text/xml");
-            const items = xml.querySelectorAll('item');
-            
-            if (items.length === 0) {
-                alert("Hittade inga spel. Se till att du kopierade allt!");
-                return;
-            }
+            const games = items.filter(block => {
+                const subtype = block.match(/subtype="([^"]+)"/)?.[1];
+                return subtype === 'boardgame'; // Rensar expansioner direkt
+            }).map(block => {
+                const title = block.match(/<name[^>]*>(.*?)<\/name>/)?.[1] || "Okänt";
+                return {
+                    id: block.match(/objectid="(\d+)"/)?.[1],
+                    title: title.replace('<![CDATA[', '').replace(']]>', ''),
+                    img: block.match(/<thumbnail>(.*?)<\/thumbnail>/)?.[1] || '',
+                    polls: {},
+                    avg: block.match(/<average value="([\d.]+)"/)?.[1] || "0.0"
+                };
+            }).filter(g => g.id);
 
-            const games = [];
-            items.forEach(item => {
-                // EXTREMT STRÄNG KONTROLL AV EXPANSIONER
-                const subtype = item.getAttribute('subtype');
-                if (subtype !== 'boardgame') return;
-
-                const name = item.querySelector('name')?.textContent || item.querySelector('name')?.getAttribute('value');
-                const stats = item.querySelector('stats');
-                
-                // Vi använder BGG:s inbyggda "min/max" istället för röstnings-polls 
-                // då röstnings-polls kräver ett separat API-anrop som bevisligen strular.
-                const min = parseInt(stats?.getAttribute('minplayers') || 0);
-                const max = parseInt(stats?.getAttribute('maxplayers') || 0);
-
-                if (name) {
-                    games.push({
-                        title: name,
-                        id: item.getAttribute('objectid'),
-                        img: item.querySelector('thumbnail')?.textContent || '',
-                        min: min,
-                        max: max,
-                        avg: parseFloat(item.querySelector('stats rating average')?.getAttribute('value') || 0).toFixed(1)
-                    });
-                }
-            });
-
-            localStorage.setItem('zebba_fail_safe_v1', JSON.stringify(games));
-            alert(`Succé! Sparade ${games.length} brädspel.`);
+            myGames = games;
+            localStorage.setItem('zebba_ultimate_v1', JSON.stringify(myGames));
+            alert(`Succé! Hittade ${games.length} brädspel. Nu kör vi steg 2 (Gula knappen).`);
             location.reload();
         });
 
-        document.getElementById('updateBtn').addEventListener('click', () => {
-            document.getElementById('importSection').classList.toggle('hidden');
+        document.getElementById('syncBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('syncBtn');
+            btn.innerText = "HÄMTAR RÖSTER...";
+            
+            // Vi hämtar 50 spel i taget för att inte bli blockerade
+            const ids = myGames.map(g => g.id).join(',');
+            try {
+                const res = await fetch(PROXY + encodeURIComponent(`https://boardgamegeek.com/xmlapi2/thing?id=${ids}&stats=1`));
+                const text = await res.text();
+                const items = text.split('<item').slice(1);
+
+                items.forEach(block => {
+                    const id = block.match(/id="(\d+)"/)?.[1];
+                    const game = myGames.find(g => g.id === id);
+                    if (game) {
+                        const polls = {};
+                        const resultsBlocks = block.split('<results numplayers="').slice(1);
+                        resultsBlocks.forEach(rb => {
+                            const num = rb.split('"')[0];
+                            const best = parseInt(rb.match(/value="Best" numvotes="(\d+)"/)?.[1] || 0);
+                            const rec = parseInt(rb.match(/value="Recommended" numvotes="(\d+)"/)?.[1] || 0);
+                            const not = parseInt(rb.match(/value="Not Recommended" numvotes="(\d+)"/)?.[1] || 0);
+                            
+                            if (best > rec && best > not) polls[num] = "best";
+                            else if ((best + rec) > not) polls[num] = "rec";
+                        });
+                        game.polls = polls;
+                    }
+                });
+
+                localStorage.setItem('zebba_ultimate_v1', JSON.stringify(myGames));
+                alert("Röstningsdata hämtad! Nu fungerar filtren.");
+                location.reload();
+            } catch (e) {
+                alert("BGG svarar inte. Prova igen om en stund.");
+                btn.innerText = "Hämta Röstningsdata ⚡";
+            }
         });
 
-        document.getElementById('randomBtn').addEventListener('click', () => {
-            const cards = Array.from(document.getElementById('gameGrid').children);
-            if (cards.length === 0) return;
-            cards.forEach(c => c.classList.remove('ring-4', 'ring-indigo-500', 'scale-105'));
-            const lucky = cards[Math.floor(Math.random() * cards.length)];
-            lucky.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            lucky.classList.add('ring-4', 'ring-indigo-500', 'scale-105', 'transition-all');
-        });
-
-        document.getElementById('playerCount').addEventListener('change', render);
+        function setFilter(level) {
+            filterLevel = level;
+            document.getElementById('btn-best').className = (level === 'best' ? "bg-indigo-600 p-4 rounded-xl text-[10px] font-black" : "bg-slate-700 p-4 rounded-xl text-[10px] font-black");
+            document.getElementById('btn-rec').className = (level === 'rec' ? "bg-indigo-600 p-4 rounded-xl text-[10px] font-black" : "bg-slate-700 p-4 rounded-xl text-[10px] font-black");
+            render();
+        }
 
         function render() {
-            const count = parseInt(document.getElementById('playerCount').value);
+            const count = document.getElementById('playerCount').value;
             const grid = document.getElementById('gameGrid');
             
-            // Filtrera baserat på spelets faktiska räckvidd
             let filtered = myGames.filter(g => {
-                if (count >= 6) return g.max >= 6;
-                return count >= g.min && count <= g.max;
+                const s = g.polls[count] || g.polls[count+"+"];
+                return filterLevel === 'best' ? s === 'best' : (s === 'best' || s === 'rec');
             });
 
             filtered.sort((a,b) => b.avg - a.avg);
 
-            grid.innerHTML = filtered.map(game => `
-                <div class="bg-slate-800 p-5 rounded-[1.5rem] flex items-center gap-5 border border-slate-700 shadow-xl transition-all">
-                    <a href="https://boardgamegeek.com/boardgame/${game.id}" target="_blank" class="w-16 h-16 flex-shrink-0">
-                        <img src="${game.img}" class="w-full h-full object-cover rounded-xl bg-slate-900 shadow-inner hover:scale-110 transition-transform">
-                    </a>
-                    <div class="flex-grow min-w-0">
-                        <h3 class="font-black text-slate-100 text-[13px] leading-tight italic uppercase truncate mb-2 text-left">${game.title}</h3>
-                        <div class="flex gap-4 items-center">
-                            <div class="flex flex-col text-[10px] font-black uppercase italic tracking-tighter text-indigo-400 text-left">
-                                <span class="text-slate-500 font-bold mb-0.5 text-[8px] italic uppercase">BGG Snitt</span>
-                                ${game.avg}
-                            </div>
-                            <div class="text-[9px] text-slate-500 font-bold ml-auto bg-slate-900/50 px-2 py-1 rounded italic">
-                                ${game.min}-${game.max} P
-                            </div>
+            grid.innerHTML = filtered.map(g => {
+                const s = g.polls[count] || g.polls[count+"+"];
+                const badge = s === 'best' ? '<span class="bg-emerald-500 text-[8px] px-2 py-1 rounded text-white font-black">BÄST</span>' : '<span class="bg-indigo-600 text-[8px] px-2 py-1 rounded text-white font-black">REK</span>';
+                return `
+                <div class="bg-slate-800 p-4 rounded-[1.8rem] flex items-center gap-4 border border-slate-700 shadow-xl">
+                    <a href="https://boardgamegeek.com/boardgame/${g.id}" target="_blank" class="w-14 h-14 flex-shrink-0"><img src="${g.img}" class="w-full h-full object-cover rounded-xl bg-slate-900 shadow-inner"></a>
+                    <div class="flex-grow min-w-0 text-left">
+                        <div class="flex items-center gap-2 mb-1">
+                            <h3 class="font-black text-slate-100 text-[11px] uppercase truncate italic">${g.title}</h3>
+                            ${badge}
                         </div>
+                        <p class="text-[9px] text-indigo-400 font-black italic">Rating: ${g.avg}</p>
                     </div>
-                </div>
-            `).join('');
+                </div>`;
+            }).join('');
 
             if (filtered.length === 0) {
-                grid.innerHTML = `<div class="text-center py-20 text-slate-500 italic font-medium uppercase text-xs tracking-widest leading-loose">Inga spel för ${count} personer hittades i din hylla...</div>`;
+                grid.innerHTML = `<div class="text-center py-20 text-slate-500 text-xs italic uppercase font-black">Inga spel med status "${filterLevel}" för ${count} pers.<br>Kör steg 2 eller byt filter!</div>`;
             }
         }
 
+        document.getElementById('closeBtn').addEventListener('click', () => document.getElementById('importSection').classList.add('hidden'));
+        document.getElementById('playerCount').addEventListener('change', render);
         init();
     </script>
 </body>
