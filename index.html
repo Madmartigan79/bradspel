@@ -10,21 +10,21 @@
     <div class="max-w-md mx-auto">
         <header class="mb-10">
             <h1 class="text-4xl font-black text-indigo-500 tracking-tighter italic uppercase">Zebbas Games</h1>
-            <p id="gameCount" class="text-slate-500 text-[10px] mt-2 italic tracking-widest uppercase font-bold">Väntar på Setup</p>
+            <p id="gameCount" class="text-slate-500 text-[10px] mt-2 italic tracking-widest uppercase font-bold">Setup</p>
         </header>
 
         <div id="importSection" class="bg-slate-800 p-8 rounded-[2rem] border-4 border-indigo-600 mb-10 shadow-2xl">
-            <h2 class="text-xl mb-4 text-indigo-400 font-black italic">1. Klistra in XML</h2>
+            <h2 class="text-xl mb-4 text-indigo-400 italic font-black">1. Klistra in XML</h2>
             <textarea id="xmlInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-32 text-[10px] font-mono text-indigo-300 outline-none mb-4" placeholder="Klistra in koden här..."></textarea>
             <button id="saveBtn" class="w-full bg-slate-700 p-4 rounded-xl text-xs mb-8 font-black uppercase">Spara Grundlista</button>
             
             <div id="syncSection" class="pt-6 border-t border-slate-700">
-                <h2 class="text-xl mb-4 text-amber-400 italic font-black">2. Synka röstningsdata</h2>
-                <button id="syncBtn" class="w-full bg-amber-500 text-slate-900 p-5 rounded-xl text-sm font-black shadow-xl mb-2">Starta Turbo-Synk ⚡</button>
-                <div id="syncLog" class="text-[10px] text-emerald-400 font-bold mt-2 h-20 overflow-y-auto font-mono normal-case tracking-normal text-left bg-black/20 p-2 rounded">Logg: Redo...</div>
+                <h2 class="text-xl mb-4 text-amber-400 italic font-black">2. Turbo-Synk</h2>
+                <button id="syncBtn" class="w-full bg-amber-500 text-slate-900 p-5 rounded-xl text-sm font-black shadow-xl mb-2">Starta Synk ⚡</button>
+                <div id="syncLog" class="text-[10px] text-emerald-400 font-bold mt-2 h-24 overflow-y-auto font-mono normal-case tracking-normal text-left bg-black/40 p-3 rounded border border-slate-700">Logg: Väntar...</div>
             </div>
             
-            <button id="closeBtn" class="mt-8 w-full bg-indigo-600 p-4 rounded-xl text-xs text-white uppercase font-black shadow-lg hidden">Visa Hyllan →</button>
+            <button id="closeBtn" class="mt-8 w-full bg-indigo-600 p-4 rounded-xl text-xs text-white uppercase font-black shadow-lg hidden" onclick="location.reload()">Visa Hyllan →</button>
             <button onclick="localStorage.clear(); location.reload();" class="mt-4 text-[8px] text-red-600 underline uppercase block w-full">Nollställ allt</button>
         </div>
 
@@ -49,11 +49,11 @@
 
     <script>
         const PROXY = "https://api.allorigins.win/raw?url=";
-        let myGames = JSON.parse(localStorage.getItem('zebba_turbo_v1')) || [];
+        let myGames = JSON.parse(localStorage.getItem('zebba_vFinal_Final')) || [];
         let filterLevel = 'best';
 
         function init() {
-            if (myGames.length > 0 && myGames.some(g => Object.keys(g.polls).length > 0)) {
+            if (myGames.length > 0) {
                 document.getElementById('importSection').classList.add('hidden');
                 document.getElementById('filterSection').classList.remove('hidden');
                 document.getElementById('gameCount').innerText = `${myGames.length} Spel Laddade`;
@@ -64,85 +64,80 @@
         document.getElementById('saveBtn').addEventListener('click', () => {
             const rawData = document.getElementById('xmlInput').value.trim();
             const items = rawData.split('<item').slice(1);
-            myGames = items.map(b => ({
-                id: b.match(/objectid="(\d+)"/)?.[1],
-                title: (b.match(/<name[^>]*>(.*?)<\/name>/)?.[1] || "Okänt").replace('<![CDATA[', '').replace(']]>', ''),
-                img: b.match(/<thumbnail>(.*?)<\/thumbnail>/)?.[1] || '',
-                polls: {}, avg: "0.0"
-            })).filter(g => g.id);
-            localStorage.setItem('zebba_turbo_v1', JSON.stringify(myGames));
-            alert(`Steg 1 klar! ${myGames.length} spel sparade. Kör Turbo-Synk nu!`);
+            myGames = items.map(b => {
+                const id = b.match(/objectid="(\d+)"/)?.[1];
+                const title = (b.match(/<name[^>]*>(.*?)<\/name>/)?.[1] || "Okänt").replace('<![CDATA[', '').replace(']]>', '');
+                const img = b.match(/<thumbnail>(.*?)<\/thumbnail>/)?.[1] || '';
+                return { id, title, img, polls: {}, avg: "0.0" };
+            }).filter(g => g.id);
+            
+            localStorage.setItem('zebba_vFinal_Final', JSON.stringify(myGames));
+            alert(`Steg 1 klar! ${myGames.length} titlar sparade. Nu kör vi synken!`);
+            location.reload();
         });
-
-        async function fetchWithRetry(url, retries = 3) {
-            for (let i = 0; i < retries; i++) {
-                try {
-                    const res = await fetch(url);
-                    if (res.ok) return await res.text();
-                } catch (e) {}
-                await new Promise(r => setTimeout(r, 2000));
-            }
-            return null;
-        }
 
         document.getElementById('syncBtn').addEventListener('click', async () => {
             const btn = document.getElementById('syncBtn');
             const log = document.getElementById('syncLog');
             btn.disabled = true;
-            btn.innerText = "SYNKAR...";
+            btn.innerText = "Laddar...";
             
-            let finalCleanList = [];
-            const chunkSize = 10; // Vi hämtar bara 10 i taget för att vara säkra
+            const chunkSize = 15;
+            let countSaved = 0;
 
             for (let i = 0; i < myGames.length; i += chunkSize) {
                 const chunk = myGames.slice(i, i + chunkSize);
                 const ids = chunk.map(g => g.id).join(',');
-                log.innerHTML += `<div>Hämtar grupp ${Math.floor(i/chunkSize) + 1}...</div>`;
+                log.innerHTML += `<div>📡 Grupp ${Math.floor(i/chunkSize) + 1}...</div>`;
                 log.scrollTop = log.scrollHeight;
 
-                const url = PROXY + encodeURIComponent(`https://boardgamegeek.com/xmlapi2/thing?id=${ids}&stats=1`);
-                const text = await fetchWithRetry(url);
-
-                if (text) {
+                try {
+                    const res = await fetch(PROXY + encodeURIComponent(`https://boardgamegeek.com/xmlapi2/thing?id=${ids}&stats=1`));
+                    const text = await res.text();
+                    
                     const itemBlocks = text.split('<item').slice(1);
                     itemBlocks.forEach(block => {
-                        if (block.includes('boardgameexpansion')) return;
                         const id = block.match(/id="(\d+)"/)?.[1];
                         const game = myGames.find(g => g.id === id);
                         if (game) {
+                            // Vi kollar efter ordet expansion i typ-taggen
+                            if (block.includes('type="boardgameexpansion"')) {
+                                game.isExpansion = true;
+                                return;
+                            }
+
                             game.avg = block.match(/<average value="([\d.]+)"/)?.[1] || "0.0";
                             const polls = {};
-                            const resultsBlocks = block.match(/<results numplayers="(\d+\+?)">[\s\S]*?<\/results>/g);
-                            if (resultsBlocks) {
-                                resultsBlocks.forEach(rb => {
-                                    const num = rb.match(/numplayers="(\d+\+?)"/)[1];
-                                    const best = parseInt(rb.match(/value="Best" numvotes="(\d+)"/)?.[1] || 0);
-                                    const rec = parseInt(rb.match(/value="Recommended" numvotes="(\d+)"/)?.[1] || 0);
-                                    const not = parseInt(rb.match(/value="Not Recommended" numvotes="(\d+)"/)?.[1] || 0);
-                                    if (best > 0 && best >= rec && best > not) polls[num] = "best";
-                                    else if ((best + rec) > not) polls[num] = "rec";
+                            const results = block.match(/<results numplayers="(\d+\+?)">[\s\S]*?<\/results>/g);
+                            if (results) {
+                                results.forEach(r => {
+                                    const num = r.match(/numplayers="(\d+\+?)"/)[1];
+                                    const bVotes = parseInt(r.match(/value="Best" numvotes="(\d+)"/)?.[1] || 0);
+                                    const rVotes = parseInt(r.match(/value="Recommended" numvotes="(\d+)"/)?.[1] || 0);
+                                    const nVotes = parseInt(r.match(/value="Not Recommended" numvotes="(\d+)"/)?.[1] || 0);
+                                    if (bVotes > rVotes && bVotes > nVotes) polls[num] = "best";
+                                    else if ((bVotes + rVotes) > nVotes) polls[num] = "rec";
                                 });
                             }
                             game.polls = polls;
-                            finalCleanList.push(game);
+                            countSaved++;
                         }
                     });
+                    // Spara efter varje grupp så vi inte tappar data
+                    localStorage.setItem('zebba_vFinal_Final', JSON.stringify(myGames));
+                } catch (e) {
+                    log.innerHTML += `<div class="text-red-500">❌ Fel vid grupp ${i/chunkSize + 1}</div>`;
                 }
-                await new Promise(r => setTimeout(r, 1000)); // Paus för att inte stressa API:et
+                await new Promise(r => setTimeout(r, 600));
             }
 
-            myGames = finalCleanList;
-            localStorage.setItem('zebba_turbo_v1', JSON.stringify(myGames));
-            log.innerHTML += `<div class="text-emerald-400 font-bold">✅ SYNK KLAR! ${myGames.length} spel sparade.</div>`;
-            btn.innerText = "KLART!";
+            // Slutlig tvätt: Ta bort de vi markerat som expansioner
+            myGames = myGames.filter(g => !g.isExpansion);
+            localStorage.setItem('zebba_vFinal_Final', JSON.stringify(myGames));
+            
+            log.innerHTML += `<div class="text-emerald-400 font-bold mt-2 text-sm uppercase">✅ KLART! ${myGames.length} brädspel kvar.</div>`;
+            btn.innerText = "SYNKA KLAR!";
             document.getElementById('closeBtn').classList.remove('hidden');
-            render();
-        });
-
-        document.getElementById('closeBtn').addEventListener('click', () => {
-            document.getElementById('importSection').classList.add('hidden');
-            document.getElementById('filterSection').classList.remove('hidden');
-            render();
         });
 
         function setFilter(level) {
@@ -170,7 +165,7 @@
                     <img src="${g.img}" class="w-16 h-16 object-cover rounded-2xl bg-slate-900 shadow-inner">
                     <div class="flex-grow min-w-0 text-left">
                         <div class="flex items-center justify-between mb-1"><h3 class="font-black text-slate-100 text-[12px] uppercase truncate italic">${g.title}</h3>${badge}</div>
-                        <p class="text-[10px] text-indigo-400 font-black italic">BGG: ${g.avg}</p>
+                        <p class="text-[10px] text-indigo-400 font-black italic">BGG Snitt: ${g.avg}</p>
                     </div>
                 </div>`;
             }).join('');
