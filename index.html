@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zebbas Spelhylla</title>
+    <title>Vad ska vi spela?</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-900 text-white min-h-screen py-10 px-4 font-sans italic uppercase font-black">
     <div class="max-w-md mx-auto">
         <header class="text-center mb-10">
-            <h1 class="text-4xl font-black text-indigo-500 tracking-tighter italic uppercase">Zebbas Gs</h1>
+            <h1 class="text-4xl font-black text-indigo-500 tracking-tighter italic uppercase">Zebbas Games</h1>
             <p id="gameCount" class="text-slate-500 text-[10px] font-bold uppercase mt-2 tracking-[0.2em] italic"></p>
         </header>
 
@@ -24,7 +24,11 @@
                     <option value="5">5 Personer</option>
                     <option value="6">6+ Personer</option>
                 </select>
-                <button id="updateBtn" class="text-[10px] text-slate-500 hover:text-indigo-400 uppercase font-black transition-colors italic tracking-widest uppercase">Uppdatera bibliotek ⚙️</button>
+                <div class="flex items-center justify-between px-2">
+                    <span class="text-[9px] text-slate-400 uppercase">Visa endast rekommenderade</span>
+                    <input type="checkbox" id="recOnly" class="w-5 h-5 accent-indigo-500">
+                </div>
+                <button id="updateBtn" class="text-[9px] text-slate-500 hover:text-indigo-400 uppercase font-black transition-colors italic tracking-widest uppercase mt-2">Uppdatera bibliotek ⚙️</button>
             </div>
         </div>
 
@@ -35,11 +39,11 @@
                     1. Öppna BGG-Data
                 </a>
                 <p class="text-[10px] text-slate-400 leading-relaxed text-center italic uppercase font-medium italic">
-                    Kopiera ALL text (Ctrl+A), klistra in här och tryck på spara.
+                    Kopiera ALL text (Ctrl+A), klistra in här och spara. Expansioner rensas bort automatiskt.
                 </p>
             </div>
             <textarea id="xmlInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-48 text-[10px] font-mono mb-6 outline-none focus:border-indigo-400 transition-colors italic" placeholder="Klistra in koden här..."></textarea>
-            <button id="saveBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 py-5 rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 italic text-lg">Spara Allt</button>
+            <button id="saveBtn" class="w-full bg-emerald-500 hover:bg-emerald-400 py-5 rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 italic text-lg">Spara Samling</button>
         </div>
 
         <div id="gameGrid" class="mt-10 space-y-4 font-bold uppercase italic font-black italic"></div>
@@ -47,6 +51,7 @@
 
     <script>
         const playerCountSelect = document.getElementById('playerCount');
+        const recOnlyCheck = document.getElementById('recOnly');
         const gameGrid = document.getElementById('gameGrid');
         const importSection = document.getElementById('importSection');
         const filterSection = document.getElementById('filterSection');
@@ -60,89 +65,125 @@
             if (myGames.length > 0) {
                 importSection.classList.add('hidden');
                 filterSection.classList.remove('hidden');
-                document.getElementById('gameCount').innerText = `${myGames.length} spel i hyllan`;
+                document.getElementById('gameCount').innerText = `${myGames.length} brädspel i hyllan`;
                 render();
             }
         }
 
         saveBtn.addEventListener('click', () => {
             const rawData = xmlInput.value;
-            if (!rawData) { alert("Textrutan är tom!"); return; }
+            if (!rawData) return;
 
-            // "THE TANK" - Vi letar efter mönster istället för att lita på XML-strukturen
-            // Vi delar upp texten vid varje <item ... >
-            const blocks = rawData.split('<item');
-            blocks.shift(); // Ta bort första delen innan första <item>
-
+            const parser = new DOMParser();
+            const xml = parser.parseFromString(rawData, "text/xml");
+            const items = xml.querySelectorAll('item');
+            
             const games = [];
-            blocks.forEach(block => {
-                try {
-                    // Fiska ut data med hjälp av smarta sökningar (RegExp)
-                    const titleMatch = block.match(/<name[^>]*>(.*?)<\/name>/);
-                    const thumbMatch = block.match(/<thumbnail>(.*?)<\/thumbnail>/);
-                    const minMatch = block.match(/minplayers="(\d+)"/);
-                    const maxMatch = block.match(/maxplayers="(\d+)"/);
-                    const avgMatch = block.match(/<average value="([\d.]+)"/);
-                    const myMatch = block.match(/<rating value="([\d.]+)"/);
+            items.forEach(item => {
+                const subtype = item.getAttribute('subtype');
+                // VIKTIGT: Filtrera bort expansioner här
+                if (subtype !== 'boardgame') return;
 
-                    if (titleMatch) {
-                        games.push({
-                            title: titleMatch[1].replace('<![CDATA[', '').replace(']]>', ''),
-                            img: thumbMatch ? thumbMatch[1] : '',
-                            min: minMatch ? parseInt(minMatch[1]) : 0,
-                            max: maxMatch ? parseInt(maxMatch[1]) : 0,
-                            avg: avgMatch ? parseFloat(avgMatch[1]).toFixed(1) : "0.0",
-                            my: (myMatch && !block.includes('value="N/A"')) ? myMatch[1] : "-"
-                        });
-                    }
-                } catch (e) { console.error("Hoppade över ett spel pga fel"); }
+                const nameNode = item.querySelector('name');
+                const title = nameNode ? (nameNode.textContent || nameNode.getAttribute('value')) : "Okänt";
+                const objectId = item.getAttribute('objectid');
+                
+                // Hitta player count polls
+                const polls = item.querySelectorAll('poll[name="suggested_numplayers"] results');
+                const playerPolls = {};
+                
+                polls.forEach(res => {
+                    const num = res.getAttribute('numplayers');
+                    const best = parseInt(res.querySelector('result[value="Best"]')?.getAttribute('numvotes') || 0);
+                    const rec = parseInt(res.querySelector('result[value="Recommended"]')?.getAttribute('numvotes') || 0);
+                    const bad = parseInt(res.querySelector('result[value="Not Recommended"]')?.getAttribute('numvotes') || 0);
+                    
+                    let status = "ok";
+                    if (best > rec && best > bad) status = "best";
+                    else if (rec > bad) status = "recommended";
+                    else if (bad > best && bad > rec) status = "bad";
+                    
+                    playerPolls[num] = status;
+                });
+
+                const stats = item.querySelector('stats');
+                games.push({
+                    id: objectId,
+                    title: title,
+                    img: item.querySelector('thumbnail')?.textContent || '',
+                    min: parseInt(stats?.getAttribute('minplayers') || 0),
+                    max: parseInt(stats?.getAttribute('maxplayers') || 0),
+                    avg: parseFloat(item.querySelector('rating > average')?.getAttribute('value') || 0).toFixed(1),
+                    polls: playerPolls
+                });
             });
 
-            if (games.length > 0) {
-                localStorage.setItem('zebbas_collection', JSON.stringify(games));
-                alert(`BOOM! Hittade och sparade ${games.length} spel.`);
-                location.reload();
-            } else {
-                alert("Kunde inte hitta några spel i texten. Är du säker på att du kopierade allt?");
-            }
+            localStorage.setItem('zebbas_collection', JSON.stringify(games));
+            location.reload();
         });
 
         updateBtn.addEventListener('click', () => {
             importSection.classList.remove('hidden');
             filterSection.classList.add('hidden');
-            xmlInput.value = "";
         });
 
-        playerCountSelect.addEventListener('change', render);
+        [playerCountSelect, recOnlyCheck].forEach(el => el.addEventListener('change', render));
 
         function render() {
             const count = parseInt(playerCountSelect.value);
-            const filtered = myGames.filter(g => {
-                if (count === 6) return g.max >= 6;
-                return count >= g.min && count <= g.max;
-            }).sort((a,b) => b.avg - a.avg);
+            const onlyRec = recOnlyCheck.checked;
 
-            gameGrid.innerHTML = filtered.map(game => `
-                <div class="bg-slate-800 p-5 rounded-[1.5rem] flex items-center gap-5 border border-slate-700/50 shadow-xl">
-                    <img src="${game.img}" class="w-16 h-16 object-cover rounded-xl bg-slate-900 shadow-inner" onerror="this.src='https://via.placeholder.com/100?text=GAME';">
+            let filtered = myGames.filter(g => {
+                const pollStatus = g.polls[count] || g.polls[count+"+"] || "ok";
+                const isPossible = count >= g.min && count <= g.max;
+                
+                if (onlyRec) {
+                    return isPossible && (pollStatus === 'best' || pollStatus === 'recommended');
+                }
+                return isPossible && pollStatus !== 'bad';
+            });
+
+            // Sortera: Bäst först, sen Recommended, sen betyg
+            filtered.sort((a,b) => {
+                const statusA = a.polls[count] || "ok";
+                const statusB = b.polls[count] || "ok";
+                if (statusA === 'best' && statusB !== 'best') return -1;
+                if (statusB === 'best' && statusA !== 'best') return 1;
+                return b.avg - a.avg;
+            });
+
+            gameGrid.innerHTML = filtered.map(game => {
+                const status = game.polls[count] || "ok";
+                let badge = "";
+                if (status === 'best') badge = `<span class="bg-emerald-500 text-[8px] px-2 py-0.5 rounded-full text-white ml-2">BÄST</span>`;
+                if (status === 'recommended') badge = `<span class="bg-indigo-500 text-[8px] px-2 py-0.5 rounded-full text-white ml-2">REK</span>`;
+
+                return `
+                <div class="bg-slate-800 p-5 rounded-[1.5rem] flex items-center gap-5 border border-slate-700/50 shadow-xl transition-all">
+                    <a href="https://boardgamegeek.com/boardgame/${game.id}" target="_blank" class="w-16 h-16 flex-shrink-0">
+                        <img src="${game.img}" class="w-full h-full object-cover rounded-xl bg-slate-900 shadow-inner hover:scale-110 transition-transform" onerror="this.src='https://via.placeholder.com/100?text=GAME';">
+                    </a>
                     <div class="flex-grow">
-                        <h3 class="font-bold text-slate-100 text-[14px] leading-tight mb-2 italic uppercase">${game.title}</h3>
+                        <div class="flex items-center mb-1">
+                            <h3 class="font-bold text-slate-100 text-[13px] leading-tight italic uppercase">${game.title}</h3>
+                            ${badge}
+                        </div>
                         <div class="flex gap-4">
                             <div class="flex flex-col text-[10px] font-black uppercase italic tracking-tighter text-indigo-400">
-                                <span class="text-slate-500 font-bold mb-0.5 italic uppercase text-[8px]">BGG Snitt</span>
+                                <span class="text-slate-500 font-bold mb-0.5 text-[8px]">BGG Snitt</span>
                                 ${game.avg}
                             </div>
-                            <div class="flex flex-col text-[10px] font-black uppercase italic tracking-tighter text-slate-300">
-                                <span class="text-slate-500 font-bold mb-0.5 italic uppercase text-[8px]">Ditt betyg</span>
-                                ${game.my}
+                            <div class="text-slate-500 text-[9px] font-bold mt-auto uppercase italic">
+                                ${game.min}-${game.max} pers
                             </div>
                         </div>
                     </div>
                 </div>
-            `).join('');
+                `;
+            }).join('');
 
             if (filtered.length === 0) {
-                gameGrid.innerHTML = `<div class="text-center py-20 text-slate-500 italic font-medium italic uppercase tracking-widest text-xs">Inga spel passar...</div>`;
+                gameGrid.innerHTML = `<div class="text-center py-20 text-slate-500 italic font-medium uppercase text-xs">Inga spel matchar valet...</div>`;
             }
         }
 
