@@ -12,23 +12,23 @@
             <h1 class="text-4xl font-black text-indigo-500 tracking-tighter italic uppercase leading-none">Zebbas<br>Games</h1>
         </header>
 
-        <div id="importSection" class="bg-slate-800 p-8 rounded-[2rem] border-4 border-indigo-600 mb-10 shadow-2xl">
-            <h2 class="text-xl mb-4 text-indigo-400 italic">Setup (Manual Fix)</h2>
-            <p class="text-[10px] normal-case text-slate-400 mb-6 italic">Klistra in XML från din vanliga länk först, sen röstningsdatan.</p>
+        <div id="setup" class="bg-slate-800 p-8 rounded-[2rem] border-4 border-indigo-600 mb-10 shadow-2xl">
+            <h2 class="text-xl mb-4 text-indigo-400 italic font-black">1. Klistra in BGG-XML</h2>
+            <textarea id="xmlInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-32 text-[10px] font-mono text-indigo-300 outline-none mb-4" placeholder="Klistra in din XML här..."></textarea>
+            <button id="saveBtn" class="w-full bg-slate-700 p-4 rounded-xl text-xs font-black uppercase mb-8">Spara & Starta Synk</button>
             
-            <textarea id="xmlInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-32 text-[10px] font-mono text-indigo-300 outline-none mb-4" placeholder="1. Klistra in din vanliga XML här..."></textarea>
-            <button id="saveBtn" class="w-full bg-slate-700 p-4 rounded-xl text-xs font-black uppercase mb-8">Spara Grundlista</button>
-            
-            <div id="syncSection" class="pt-6 border-t border-slate-700 hidden">
-                <p class="text-[10px] normal-case text-slate-400 mb-4">Nu hämtar vi rösterna via det gamla API:et (det blockeras inte):</p>
-                <a id="legacyLink" href="#" target="_blank" class="block w-full bg-indigo-600 p-4 rounded-xl text-xs font-black text-white shadow-lg mb-6 underline">ÖPPNA RÖSTNINGSDATA (API v1)</a>
-                <textarea id="syncInput" class="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 h-32 text-[10px] font-mono text-emerald-300 outline-none mb-4" placeholder="2. Klistra in koden från länken här..."></textarea>
-                <button id="finishBtn" class="w-full bg-emerald-600 text-white p-5 rounded-xl text-sm font-black shadow-xl">AKTIVERA ALLA FILTER ✅</button>
+            <div id="syncSection" class="hidden pt-6 border-t border-slate-700">
+                <h2 class="text-xl mb-4 text-amber-400 italic font-black">2. Synkar röstningsdata...</h2>
+                <div class="w-full bg-slate-900 h-4 rounded-full overflow-hidden mb-4 border border-slate-700">
+                    <div id="progressBar" class="w-0 h-full bg-emerald-500 transition-all duration-500"></div>
+                </div>
+                <div id="syncLog" class="text-[10px] text-slate-400 font-mono italic mb-4">Väntar...</div>
             </div>
+            <button onclick="localStorage.clear(); location.reload();" class="text-[8px] text-red-600 underline uppercase mt-4 block w-full opacity-50">Nollställ Allt</button>
         </div>
 
-        <div id="filterSection" class="hidden bg-slate-800 p-6 rounded-[2rem] border border-slate-700 mb-6 shadow-xl">
-            <select id="playerCount" class="w-full bg-slate-900 border-2 border-slate-700 rounded-2xl p-4 text-2xl text-center mb-6 outline-none text-indigo-400 italic font-black uppercase italic">
+        <div id="filters" class="hidden bg-slate-800 p-6 rounded-[2rem] border border-slate-700 mb-6 shadow-xl">
+            <select id="playerCount" class="w-full bg-slate-900 border-2 border-slate-700 rounded-2xl p-4 text-2xl text-center mb-6 outline-none text-indigo-400 italic font-black">
                 <option value="1">1 Person</option>
                 <option value="2" selected>2 Personer</option>
                 <option value="3">3 Personer</option>
@@ -46,89 +46,99 @@
     </div>
 
     <script>
-        let myGames = JSON.parse(localStorage.getItem('zebba_legacy_v1')) || [];
+        // Vi använder en extremt stabil Google-proxy
+        const PROXY = "https://images" + Math.floor(Math.random() * 3 + 1) + "-focus-opensocial.googleusercontent.com/gadgets/proxy?container=focus&refresh=600&url=";
+        let myGames = JSON.parse(localStorage.getItem('zebba_final_v99')) || [];
         let filterLevel = 'best';
 
         function init() {
-            if (myGames.length > 0) {
-                const hasVotes = myGames.some(g => Object.keys(g.polls || {}).length > 0);
-                if (hasVotes) {
-                    document.getElementById('importSection').classList.add('hidden');
-                    document.getElementById('filterSection').classList.remove('hidden');
-                    render();
-                } else {
-                    document.getElementById('syncSection').classList.remove('hidden');
-                    const ids = myGames.map(g => g.id).join(',');
-                    document.getElementById('legacyLink').href = `https://boardgamegeek.com/xmlapi/boardgame/${ids}`;
-                }
+            if (myGames.length > 0 && myGames.some(g => Object.keys(g.polls).length > 0)) {
+                document.getElementById('setup').classList.add('hidden');
+                document.getElementById('filters').classList.remove('hidden');
+                render();
             }
         }
 
-        document.getElementById('saveBtn').addEventListener('click', () => {
+        document.getElementById('saveBtn').addEventListener('click', async () => {
             const rawData = document.getElementById('xmlInput').value.trim();
+            if(!rawData) return;
+            
             const items = rawData.split('<item').slice(1);
             myGames = items.map(b => ({
                 id: b.match(/objectid="(\d+)"/)?.[1],
                 title: (b.match(/<name[^>]*>(.*?)<\/name>/)?.[1] || "Okänt").replace('<![CDATA[', '').replace(']]>', ''),
                 img: b.match(/<thumbnail>(.*?)<\/thumbnail>/)?.[1] || '',
-                polls: {}, avg: b.match(/<average value="([\d.]+)"/)?.[1] || "0.0"
+                polls: {},
+                avg: b.match(/<average value="([\d.]+)"/)?.[1] || "0.0"
             })).filter(g => g.id);
-            localStorage.setItem('zebba_legacy_v1', JSON.stringify(myGames));
-            location.reload();
-        });
 
-        document.getElementById('finishBtn').addEventListener('click', () => {
-            const data = document.getElementById('syncInput').value.trim();
-            const blocks = data.split('<boardgame').slice(1);
+            document.getElementById('syncSection').classList.remove('hidden');
+            document.getElementById('saveBtn').classList.add('hidden');
             
-            blocks.forEach(block => {
-                const id = block.match(/objectid="(\d+)"/)?.[1];
-                const game = myGames.find(g => g.id === id);
-                if (game) {
-                    const polls = {};
-                    const pollSection = block.match(/<poll name="suggested_numplayers"[\s\S]*?<\/poll>/);
-                    if (pollSection) {
-                        const results = pollSection[0].match(/<results numplayers="(\d+\+?)">[\s\S]*?<\/results>/g);
-                        if (results) {
-                            results.forEach(r => {
-                                const n = r.match(/numplayers="(\d+\+?)"/)[1];
-                                const b = parseInt(r.match(/value="Best" numvotes="(\d+)"/)?.[1] || 0);
-                                const rec = parseInt(r.match(/value="Recommended" numvotes="(\d+)"/)?.[1] || 0);
-                                const not = parseInt(r.match(/value="Not Recommended" numvotes="(\d+)"/)?.[1] || 0);
-                                if (b > 0 && b >= rec && b > not) polls[n] = "best";
-                                else if ((b + rec) > not) polls[n] = "rec";
-                            });
-                        }
-                    }
-                    game.polls = polls;
-                }
-            });
+            const chunkSize = 10;
+            const log = document.getElementById('syncLog');
+            const bar = document.getElementById('progressBar');
 
-            localStorage.setItem('zebba_legacy_v1', JSON.stringify(myGames));
+            for (let i = 0; i < myGames.length; i += chunkSize) {
+                const chunk = myGames.slice(i, i + chunkSize);
+                const ids = chunk.map(g => g.id).join(',');
+                log.innerText = `Hämtar röster: ${i} / ${myGames.length}`;
+                bar.style.width = (i / myGames.length * 100) + "%";
+
+                try {
+                    const url = PROXY + encodeURIComponent(`https://boardgamegeek.com/xmlapi/boardgame/${ids}`);
+                    const res = await fetch(url);
+                    const text = await res.text();
+                    
+                    const parser = new DOMParser();
+                    const xml = parser.parseFromString(text, "text/xml");
+                    const games = xml.querySelectorAll('boardgame');
+
+                    games.forEach(gXml => {
+                        const id = gXml.getAttribute('objectid');
+                        const game = myGames.find(x => x.id === id);
+                        if (game) {
+                            const polls = {};
+                            const poll = gXml.querySelector('poll[name="suggested_numplayers"]');
+                            if (poll) {
+                                poll.querySelectorAll('results').forEach(r => {
+                                    const n = r.getAttribute('numplayers');
+                                    const best = parseInt(r.querySelector('result[value="Best"]')?.getAttribute('numvotes') || 0);
+                                    const rec = parseInt(r.querySelector('result[value="Recommended"]')?.getAttribute('numvotes') || 0);
+                                    const not = parseInt(r.querySelector('result[value="Not Recommended"]')?.getAttribute('numvotes') || 0);
+                                    if (best > rec && best > not) polls[n] = "best";
+                                    else if ((best + rec) > not) polls[n] = "rec";
+                                });
+                            }
+                            game.polls = polls;
+                        }
+                    });
+                } catch (e) { console.error("Synk-miss för grupp", i); }
+                await new Promise(r => setTimeout(r, 500));
+            }
+
+            localStorage.setItem('zebba_final_v99', JSON.stringify(myGames));
             location.reload();
         });
 
-        function setFilter(level) {
-            filterLevel = level;
-            ['best', 'rec', 'all'].forEach(l => {
-                document.getElementById('btn-' + l).className = (l === level ? "bg-indigo-600 p-4 rounded-xl text-[10px] font-black italic border-b-4 border-indigo-900 shadow-lg" : "bg-slate-700 p-4 rounded-xl text-[10px] font-black italic shadow-lg");
-            });
+        function setFilter(l) {
+            filterLevel = l;
+            ['best', 'rec', 'all'].forEach(id => document.getElementById('btn-'+id).className = id === l ? "bg-indigo-600 p-4 rounded-xl text-[10px] font-black italic border-b-4 border-indigo-900 shadow-lg" : "bg-slate-700 p-4 rounded-xl text-[10px] font-black italic shadow-lg");
             render();
         }
 
         function render() {
             const count = document.getElementById('playerCount').value;
             const grid = document.getElementById('gameGrid');
-            const data = myGames.filter(g => {
+            const filtered = myGames.filter(g => {
                 if (filterLevel === 'all') return true;
                 const s = g.polls[count] || g.polls[count+"+"];
                 return filterLevel === 'best' ? s === 'best' : (s === 'best' || s === 'rec');
             }).sort((a,b) => b.avg - a.avg);
 
-            grid.innerHTML = data.map(g => {
+            grid.innerHTML = filtered.map(g => {
                 const s = g.polls[count] || g.polls[count+"+"];
-                const badge = s === 'best' ? '<span class="bg-emerald-500 text-[8px] px-2 py-1 rounded text-white font-black italic shadow-sm">BÄST</span>' : 
-                             (s === 'rec' ? '<span class="bg-indigo-600 text-[8px] px-2 py-1 rounded text-white font-black italic shadow-sm">REK</span>' : '');
+                const badge = s === 'best' ? '<span class="bg-emerald-500 text-[8px] px-2 py-1 rounded text-white font-black italic">BÄST</span>' : (s === 'rec' ? '<span class="bg-indigo-600 text-[8px] px-2 py-1 rounded text-white font-black italic">REK</span>' : '');
                 return `<div class="bg-slate-800 p-5 rounded-[2rem] flex items-center gap-5 border border-slate-700 shadow-xl">
                     <img src="${g.img}" class="w-16 h-16 object-cover rounded-2xl bg-slate-900 shadow-inner">
                     <div class="flex-grow min-w-0 text-left">
@@ -136,11 +146,12 @@
                             <h3 class="font-black text-slate-100 text-[12px] uppercase truncate italic leading-tight">${g.title}</h3>
                             ${badge}
                         </div>
-                        <p class="text-[10px] text-indigo-400 font-black italic uppercase">BGG: ${g.avg}</p>
+                        <p class="text-[10px] text-indigo-400 font-black italic uppercase leading-none">BGG: ${g.avg}</p>
                     </div>
                 </div>`;
             }).join('');
         }
+        document.getElementById('playerCount').addEventListener('change', render);
         init();
     </script>
 </body>
